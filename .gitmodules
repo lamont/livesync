@@ -1,3 +1,6 @@
 [submodule "couchdb/docker-obsidian-livesync-couchdb"]
 	path = couchdb/docker-obsidian-livesync-couchdb
 	url = https://github.com/oleduc/docker-obsidian-livesync-couchdb.git
+[submodule "vendor/obsidian-livesync"]
+	path = vendor/obsidian-livesync
+	url = https://github.com/vrtmrz/obsidian-livesync.git
