@@ -1,0 +1,6 @@
+.env
+agent-vault/
+couchdb-data/
+*.swp
+*.swo
+.DS_Store
