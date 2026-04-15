@@ -1,6 +1,21 @@
+# Secrets
 .env
+.env.*
+!.env.example
+
+# Docker volumes (if bind-mounted locally)
 agent-vault/
 couchdb-data/
+quartz-vault/
+
+# Build / cache
+node_modules/
+dist/
+.cache/
+*.tgz
+
+# Editors
 *.swp
 *.swo
 .DS_Store
+*~
