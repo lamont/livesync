@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: livesync-config
+  namespace: livesync
+data:
+  COUCHDB_USER: admin
+  COUCHDB_DATABASE: obsidian-wiki
+  COUCHDB_URI: http://couchdb:5984
+  SYNC_INTERVAL: "60"

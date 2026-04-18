@@ -6,7 +6,12 @@
 # Docker volumes (if bind-mounted locally)
 agent-vault/
 couchdb-data/
-quartz-vault/
+vault/
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
 
 # Build / cache
 node_modules/

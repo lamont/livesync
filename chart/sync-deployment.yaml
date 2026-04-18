@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sync
+  namespace: livesync
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate          # single writer to avoid conflicts
+  selector:
+    matchLabels:
+      app: sync
+  template:
+    metadata:
+      labels:
+        app: sync
+    spec:
+      containers:
+        - name: sync
+          image: livesync-sync
+          envFrom:
+            - configMapRef:
+                name: livesync-config
+            - secretRef:
+                name: livesync-secrets
+          volumeMounts:
+            - name: vault
+              mountPath: /data
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+      volumes:
+        - name: vault
+          persistentVolumeClaim:
+            claimName: vault

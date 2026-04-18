@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+# Build all custom images (linux/amd64) and push to the eqincubatingimages
+# ECR repo in eq-shared-services, tagged per component.
+#
+# Usage:
+#   ./build-push.sh              # build + push all
+#   ./build-push.sh sync viewer  # build + push specific images
+#
+# Prerequisites:
+#   - docker with buildx
+#   - granted/assume CLI (`assume eq-shared-services` must work)
+set -euo pipefail
+
+ACCOUNT_ID=497689819904
+REGION=us-east-1
+ASSUME_PROFILE="${ASSUME_PROFILE:-eq-shared-services}"
+REPO=eqincubatingimages
+REGISTRY="${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com"
+IMAGE_BASE="${REGISTRY}/${REPO}"
+PLATFORM=linux/amd64
+GIT_SHA=$(git rev-parse --short HEAD 2>/dev/null || echo "dev")
+
+# Components and their build contexts / Dockerfiles
+declare -A CONTEXTS=(
+  [livesync-cli]="vendor/obsidian-livesync"
+  [sync]="sync"
+  [viewer]="viewer"
+  [agent]="agent"
+)
+declare -A DOCKERFILES=(
+  [livesync-cli]="vendor/obsidian-livesync/src/apps/cli/Dockerfile"
+  [sync]="sync/Dockerfile"
+  [viewer]="viewer/Dockerfile"
+  [agent]="agent/Dockerfile"
+)
+
+# livesync-cli is a build dependency, not pushed separately by default
+PUSHABLE=(sync viewer agent)
+
+# If args given, only build+push those (but always build livesync-cli first)
+TARGETS=("${@:-${PUSHABLE[@]}}")
+
+log() { echo "==> $*"; }
+
+# ── ECR login ────────────────────────────────────────────────────────────────
+#log "Logging in to ECR (${REGISTRY}) via assume ${ASSUME_PROFILE}"
+#assume "${ASSUME_PROFILE}" --exec "aws ecr get-login-password --region ${REGION}" \
+#  | docker login --username AWS --password-stdin "${REGISTRY}"
+
+# ── Build livesync-cli base image (always needed) ───────────────────────────
+log "Building livesync-cli:local (base image)"
+docker buildx build \
+  --platform "${PLATFORM}" \
+  -f "${DOCKERFILES[livesync-cli]}" \
+  -t livesync-cli:local \
+  --load \
+  "${CONTEXTS[livesync-cli]}"
+
+# ── Build and push requested images ─────────────────────────────────────────
+for name in "${TARGETS[@]}"; do
+  if [[ -z "${CONTEXTS[$name]+x}" ]]; then
+    echo "ERROR: unknown component '${name}'" >&2
+    echo "Valid components: ${!CONTEXTS[*]}" >&2
+    exit 1
+  fi
+
+  tag="${IMAGE_BASE}:${name}-${GIT_SHA}"
+  tag_latest="${IMAGE_BASE}:${name}-latest"
+
+  log "Building ${name} → ${tag}"
+  docker buildx build \
+    --platform "${PLATFORM}" \
+    -f "${DOCKERFILES[$name]}" \
+    -t "${tag}" \
+    -t "${tag_latest}" \
+    --load \
+    "${CONTEXTS[$name]}"
+
+  log "Pushing ${tag}"
+  docker push "${tag}"
+  docker push "${tag_latest}"
+
+  log "Pushed ${name}: ${tag_latest}"
+done
+
+log "Done. Images:"
+for name in "${TARGETS[@]}"; do
+  echo "  ${IMAGE_BASE}:${name}-latest"
+  echo "  ${IMAGE_BASE}:${name}-${GIT_SHA}"
+done

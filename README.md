@@ -2,7 +2,7 @@
 
 A docker-compose development environment that runs a self-hosted Obsidian vault
 as a shared LLM wiki. CouchDB acts as the durable sync hub (via the LiveSync
-protocol), a Quartz static site provides the web UI, and a one-shot agent
+protocol), a static site viewer provides the web UI, and a one-shot agent
 container runs Claude Code to perform wiki operations.
 
 ## Architecture
@@ -19,15 +19,19 @@ container runs Claude Code to perform wiki operations.
 │         │  LiveSync replication                               │
 │         │                                                    │
 │  ┌──────┴───────┐         ┌──────────────┐                   │
-│  │   agent       │────────►│   quartz      │                  │
+│  │   agent       │────────►│   viewer      │                  │
 │  │              │ shared  │              │                   │
-│  │  livesync-cli│ volume  │  dockerized-  │                  │
-│  │  claude code │ (r/w)   │  quartz       │                  │
-│  │              │         │  :8080        │                  │
+│  │  livesync-cli│ volume  │  Quartz v4    │                  │
+│  │  claude code │ (r/w)   │  :8080        │                  │
+│  │              │         │              │                   │
 │  └──────────────┘         └──────────────┘                   │
 │         │                        │                           │
-│         └── agent-vault ─────────┘                           │
-│             (named volume)                                   │
+│         └─── vault (named volume)┘                           │
+│                                                              │
+│  ┌──────────────┐                                            │
+│  │   sync        │  livesync-cli sidecar                     │
+│  │              │  volume: vault (r/w)                       │
+│  └──────────────┘                                            │
 └──────────────────────────────────────────────────────────────┘
 
 External:
@@ -40,11 +44,13 @@ External:
    LiveSync's chunk-level document format.
 2. **Obsidian desktop** clients connect directly to CouchDB via the LiveSync
    plugin for real-time sync.
-3. **Agent** uses `livesync-cli` to pull the vault from CouchDB into a local
-   filesystem (`agent-vault` volume), runs Claude Code against it, then pushes
-   changes back to CouchDB.
-4. **Quartz** mounts `agent-vault` read-only and rebuilds the static site when
-   files change.
+3. **Sync** uses `livesync-cli` to periodically pull the vault from CouchDB
+   into a local filesystem (`vault` volume).
+4. **Agent** uses `livesync-cli` to pull the vault from CouchDB into its own
+   volume (`agent-vault`), runs Claude Code against it, then pushes changes
+   back to CouchDB.
+5. **Viewer** mounts `vault` read-only and rebuilds the static site (Quartz v4)
+   when files change.
 
 ## Services
 
@@ -59,16 +65,24 @@ required settings (`max_document_size`, `require_valid_user`, etc.) baked in.
 - Volume: `couchdb-data` (persistent)
 - Healthcheck: `GET /_up`
 
-### quartz — Wiki Web UI
+### sync — Vault Sync Sidecar
 
-**Image:** `shommey/dockerized-quartz`
+**Image:** Custom Dockerfile (livesync-cli + Deno)
 
-Watches the vault directory for changes and rebuilds the Quartz v4 static site.
-Serves via nginx.
+Periodically pulls vault state from CouchDB to the shared filesystem volume.
+
+- Volume: `vault` at `/data` (read-write)
+- Sync interval: configurable (default 60s)
+
+### viewer — Wiki Web UI
+
+**Image:** Custom Dockerfile (Quartz v4 + Node 22)
+
+Watches the vault directory for changes and rebuilds the static site. Serves
+via the Quartz dev server.
 
 - Port: `8080`
-- Volume: `agent-vault` mounted read-only at `/vault`
-- Rebuild delay: configurable (default 120s)
+- Volume: `vault` mounted read-only at `/vault`
 
 ### agent — Claude Code Wiki Worker
 
@@ -77,7 +91,7 @@ Serves via nginx.
 One-shot container. Syncs vault from CouchDB, runs a Claude Code prompt against
 it, pushes results back. Exits on completion.
 
-- Volume: `agent-vault` at `/vault` (read-write)
+- Volume: `agent-vault` at `/data` (read-write)
 - Entrypoint: `sync → claude -p "$INSTRUCTION" → push → exit`
 
 ## Quick Start
@@ -90,8 +104,8 @@ cp .env.example .env
 docker compose up -d couchdb
 # Connect Obsidian desktop via LiveSync plugin to localhost:5984
 
-# Phase 2: Start Quartz
-docker compose up -d quartz
+# Phase 2: Start sync + viewer
+docker compose up -d sync viewer
 # Browse wiki at http://localhost:8080
 
 # Phase 3: Run agent
@@ -99,10 +113,26 @@ docker compose run agent -p "initialize the wiki"
 docker compose run agent -p "query: what is in this wiki?"
 ```
 
+## Kubernetes Deployment
+
+Raw manifests in `chart/` target an EKS sandbox cluster:
+
+- **CouchDB** — StatefulSet with EBS (gp3) persistent volume
+- **Sync** — Deployment writing to EFS-backed shared volume
+- **Viewer** — Deployment + LoadBalancer Service reading from EFS
+- **Agent** — Job template mounting EFS
+
+```bash
+kubectl apply -k chart/
+```
+
+See `chart/` for details. Assumes EBS CSI and EFS CSI drivers are installed.
+
 ## Implementation Order
 
 1. **CouchDB** — get LiveSync hub running, verify Obsidian desktop can connect
-2. **Quartz** — web UI reading from shared volume
+2. **Sync + Viewer** — vault sync sidecar + web UI reading from shared volume
 3. **Agent** — livesync-cli + Claude Code one-shot worker
+4. **K8s** — deploy to sandbox EKS cluster
 
 See [TODO.md](TODO.md) for the detailed implementation checklist.

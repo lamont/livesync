@@ -1,0 +1,39 @@
+# One-shot agent job — create with a specific INSTRUCTION to run.
+# Example:
+#   kubectl create job agent-run-1 --from=job/agent -n livesync \
+#     -- sh -c 'INSTRUCTION="summarize this wiki" /entrypoint.sh'
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: agent
+  namespace: livesync
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: agent
+          image: livesync-agent
+          env:
+            - name: INSTRUCTION
+              value: "Describe the contents of this vault."
+          envFrom:
+            - configMapRef:
+                name: livesync-config
+            - secretRef:
+                name: livesync-secrets
+          volumeMounts:
+            - name: vault
+              mountPath: /data
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+      volumes:
+        - name: vault
+          persistentVolumeClaim:
+            claimName: vault

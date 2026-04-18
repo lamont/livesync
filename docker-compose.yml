@@ -37,9 +37,9 @@ services:
         echo "Init complete."
     restart: "no"
 
-  quartz-sync:
+  sync:
     build:
-      context: ./quartz-sync
+      context: ./sync
     depends_on:
       couchdb:
         condition: service_healthy
@@ -51,18 +51,18 @@ services:
       LIVESYNC_PASSPHRASE: ${LIVESYNC_PASSPHRASE:?Set LIVESYNC_PASSPHRASE in .env}
       SYNC_INTERVAL: ${SYNC_INTERVAL:-60}
     volumes:
-      - quartz-vault:/data
+      - vault:/data
     restart: unless-stopped
 
-  quartz:
+  viewer:
     build:
-      context: ./quartz
+      context: ./viewer
     depends_on:
-      - quartz-sync
+      - sync
     ports:
       - "8080:8080"
     volumes:
-      - quartz-vault:/vault:ro
+      - vault:/vault:ro
     restart: unless-stopped
 
   agent:
@@ -83,7 +83,22 @@ services:
       - agent-vault:/data
     restart: "no"
 
+  portal:
+    build:
+      context: ./portal
+    depends_on:
+      couchdb:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    environment:
+      JWT_SIGNING_KEY: ${JWT_SIGNING_KEY:-dev-secret-key}
+      COUCHDB_URI: http://couchdb:5984
+      COUCHDB_USER: ${COUCHDB_USER:-admin}
+      COUCHDB_PASSWORD: ${COUCHDB_PASSWORD:?Set COUCHDB_PASSWORD in .env}
+    restart: unless-stopped
+
 volumes:
   couchdb-data:
-  quartz-vault:
+  vault:
   agent-vault:
