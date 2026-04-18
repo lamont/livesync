@@ -122,6 +122,36 @@ else
     fail "Portal returned $HTTP_CODE for invalid token (expected 401)"
 fi
 
+# ── Local auth (HTTP Basic) tests ────────────────────────────────────────────
+# The portal defaults to AUTH_MODE=local in docker-compose with users.yaml mounted.
+
+# Test: valid local admin via HTTP Basic Auth
+RESPONSE=$(curl -s -u "admin@localhost:admin" http://localhost:8000/)
+EMAIL=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('user',''))" 2>/dev/null)
+IS_ADMIN=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('is_admin',''))" 2>/dev/null)
+if [ "$EMAIL" = "admin@localhost" ] && [ "$IS_ADMIN" = "True" ]; then
+    pass "Local auth: admin login via HTTP Basic"
+else
+    fail "Local auth: admin got email='$EMAIL' is_admin='$IS_ADMIN'"
+fi
+
+# Test: valid local regular user
+RESPONSE=$(curl -s -u "user@localhost:user" http://localhost:8000/)
+IS_ADMIN_LOCAL=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('is_admin',''))" 2>/dev/null)
+if [ "$IS_ADMIN_LOCAL" = "False" ]; then
+    pass "Local auth: regular user not admin"
+else
+    fail "Local auth: regular user got is_admin='$IS_ADMIN_LOCAL'"
+fi
+
+# Test: wrong password → 401
+HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -u "admin@localhost:wrong" http://localhost:8000/)
+if [ "$HTTP_CODE" = "401" ]; then
+    pass "Local auth: wrong password returns 401"
+else
+    fail "Local auth: wrong password returned $HTTP_CODE (expected 401)"
+fi
+
 # ── CouchDB init check ──────────────────────────────────────────────────────
 # Start couchdb-init to create databases, then check they exist
 $COMPOSE up -d couchdb-init 2>/dev/null

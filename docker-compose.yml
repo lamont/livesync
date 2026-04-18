@@ -92,10 +92,14 @@ services:
     ports:
       - "8000:8000"
     environment:
+      AUTH_MODE: ${AUTH_MODE:-local}
+      USERS_FILE: /app/users.yaml
       JWT_SIGNING_KEY: ${JWT_SIGNING_KEY:-dev-secret-key}
       COUCHDB_URI: http://couchdb:5984
       COUCHDB_USER: ${COUCHDB_USER:-admin}
       COUCHDB_PASSWORD: ${COUCHDB_PASSWORD:?Set COUCHDB_PASSWORD in .env}
+    volumes:
+      - ./portal/users.yaml:/app/users.yaml:ro
     restart: unless-stopped
 
 volumes:

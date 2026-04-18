@@ -1,0 +1,8 @@
+# Local development users — mounted into the portal container.
+# Edit this file to add/remove users; changes take effect immediately.
+- email: admin@localhost
+  password: admin
+  groups: [livesync-admin]
+- email: user@localhost
+  password: user
+  groups: [eng]

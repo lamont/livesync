@@ -1,12 +1,36 @@
-"""Tests for JWT authentication middleware."""
+"""Tests for JWT (OIDC) authentication.
+
+These tests use the x-amzn-oidc-data header path.  The ``client`` fixture
+runs the app with whatever AUTH_MODE is set (default: local), but the OIDC
+header takes priority in any mode.
+"""
+
+import os
+
+import pytest
+from fastapi.testclient import TestClient
 
 from tests.conftest import make_token
 
 OIDC_HEADER = "x-amzn-oidc-data"
 
 
-def test_no_auth_header_returns_401(client):
-    r = client.get("/")
+@pytest.fixture
+def oidc_client():
+    """Client with AUTH_MODE=oidc so unauthenticated requests get JSON 401."""
+    os.environ["AUTH_MODE"] = "oidc"
+    import importlib, app.auth, app.main
+    importlib.reload(app.auth)
+    importlib.reload(app.main)
+    client = TestClient(app.main.app)
+    yield client
+    os.environ["AUTH_MODE"] = "local"
+    importlib.reload(app.auth)
+    importlib.reload(app.main)
+
+
+def test_oidc_no_auth_header_returns_401(oidc_client):
+    r = oidc_client.get("/")
     assert r.status_code == 401
     assert "Missing" in r.json()["detail"]
 
