@@ -163,8 +163,11 @@ async function main() {
         minimumIntervalOfReadChunksOnline: 100,
         handleFilenameCaseSensitive: false,
         doNotUseFixedRevisionForChunks: false,
+        disableCheckingConfigMismatch: true,
         settingVersion: 10,
         notifyThresholdOfRemoteStorageSize: 800,
+        liveSync: true,
+        liveSyncEnabled: true,
     };
     const encryptedConf = encodeURIComponent(await encrypt(JSON.stringify(conf), uri_passphrase, false));
     const theURI = `${URIBASE}${encryptedConf}`;
