@@ -188,3 +188,31 @@ async def test_get_setup_uri_returns_obsidian_uri(service, mock_couch):
         assert result["uri_passphrase"] == "autumn-river"
         mock_couch.get_passphrase.assert_called_with("team-wiki")
         mock_couch.ensure_user.assert_called_with("alice@co.com", reset_password=True)
+
+
+# ── update_vault ────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_update_vault_encrypted_only(service, mock_couch):
+    """update_vault should toggle encrypted_only and write registry doc."""
+    mock_couch.get_registry_doc.return_value = {
+        "_id": "vault:my-vault",
+        "name": "my-vault", "owner": "alice@co.com",
+        "members": ["alice@co.com"], "groups": [],
+        "encrypted_only": False,
+    }
+
+    vault = await service.update_vault("my-vault", encrypted_only=True)
+
+    assert vault.encrypted_only is True
+    doc = mock_couch.put_registry_doc.call_args.args[0]
+    assert doc["encrypted_only"] is True
+
+
+@pytest.mark.asyncio
+async def test_update_vault_not_found(service, mock_couch):
+    """update_vault should raise ValueError for missing vault."""
+    mock_couch.get_registry_doc.return_value = None
+
+    with pytest.raises(ValueError, match="not found"):
+        await service.update_vault("nonexistent", encrypted_only=True)

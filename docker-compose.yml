@@ -105,6 +105,23 @@ services:
       - agent-vault:/data
     restart: "no"
 
+  agent-multi:
+    build:
+      context: ./agent
+    depends_on:
+      couchdb:
+        condition: service_healthy
+    environment:
+      COUCHDB_URI: http://couchdb:5984
+      COUCHDB_USER: ${COUCHDB_USER:-admin}
+      COUCHDB_PASSWORD: ${COUCHDB_PASSWORD:?Set COUCHDB_PASSWORD in .env}
+      VAULT_NAME: ${VAULT_NAME:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:?Set ANTHROPIC_API_KEY in .env}
+      INSTRUCTION: ${INSTRUCTION:-Describe the contents of this vault.}
+    volumes:
+      - agent-multi-vault:/data
+    restart: "no"
+
   portal:
     build:
       context: ./portal
@@ -133,3 +150,4 @@ volumes:
   vaults:
   static:
   agent-vault:
+  agent-multi-vault:

@@ -20,6 +20,10 @@ class VaultInfo(BaseModel):
     encrypted_only: bool = False
 
 
+class VaultUpdate(BaseModel):
+    encrypted_only: bool | None = None
+
+
 class MembersUpdate(BaseModel):
     add: list[str] = []
     remove: list[str] = []

@@ -1,8 +1,42 @@
 #!/bin/sh
 # One-shot agent: bootstrap → sync → run Claude Code → push changes back.
+#
+# Two modes:
+#   Multi-vault:  set VAULT_NAME — fetches passphrase from registry.
+#   Legacy:       set COUCHDB_DATABASE + LIVESYNC_PASSPHRASE (original behavior).
 set -eu
 
-VAULT=/data
+# ── Resolve vault target ─────────────────────────────────────────────────
+if [ -n "${VAULT_NAME:-}" ]; then
+  # ── Multi-vault mode: fetch config from registry ──────────────────────
+  echo "[init] multi-vault mode: vault=${VAULT_NAME}"
+  COUCH_AUTH_URL="$(echo "${COUCHDB_URI}" | sed "s|://|://${COUCHDB_USER}:${COUCHDB_PASSWORD}@|")"
+
+  # Check encrypted-only flag
+  ENCRYPTED=$(curl -sf "${COUCH_AUTH_URL}/livesync-registry/vault:${VAULT_NAME}" \
+    | jq -r '.encrypted_only // false')
+  if [ "$ENCRYPTED" = "true" ]; then
+    echo "[skip] vault '${VAULT_NAME}' is encrypted-only — agent cannot operate on it"
+    exit 0
+  fi
+
+  # Fetch passphrase
+  LIVESYNC_PASSPHRASE=$(curl -sf "${COUCH_AUTH_URL}/livesync-passphrases/${VAULT_NAME}" \
+    | jq -r '.passphrase')
+  if [ -z "$LIVESYNC_PASSPHRASE" ] || [ "$LIVESYNC_PASSPHRASE" = "null" ]; then
+    echo "[fatal] no passphrase found for vault: ${VAULT_NAME}"
+    exit 1
+  fi
+
+  COUCHDB_DATABASE="$VAULT_NAME"
+  VAULT="/data/vaults/${VAULT_NAME}"
+  mkdir -p "$VAULT"
+else
+  # ── Legacy single-vault mode ──────────────────────────────────────────
+  echo "[init] single-vault mode: database=${COUCHDB_DATABASE}"
+  VAULT=/data
+fi
+
 SETTINGS="$VAULT/.livesync/settings.json"
 CLI="node /app/dist/index.cjs $VAULT"
 

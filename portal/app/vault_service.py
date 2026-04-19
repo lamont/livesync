@@ -170,6 +170,20 @@ class VaultService:
         docs = await self.couch.get_registry()
         return [self._vault_info_from_doc(d) for d in docs]
 
+    async def update_vault(
+        self, name: str, *, encrypted_only: bool | None = None
+    ) -> VaultInfo:
+        """Update vault settings.  Currently supports toggling encrypted_only."""
+        doc = await self.couch.get_registry_doc(name)
+        if doc is None:
+            raise ValueError(f"Vault '{name}' not found")
+
+        if encrypted_only is not None:
+            doc["encrypted_only"] = encrypted_only
+
+        await self.couch.put_registry_doc(doc)
+        return self._vault_info_from_doc(doc)
+
     # ── Sharing ─────────────────────────────────────────────────────────────
 
     async def share_vault(self, vault_name: str, email: str) -> VaultInfo:

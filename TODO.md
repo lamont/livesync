@@ -131,15 +131,23 @@
       email → second user sees it; admin → `/admin/` shows all vaults;
       Quartz viewer links resolve correctly; vault names validated server-side
 
-### Phase 12: Encrypted-Only Vaults + Agent Multi-Vault
+### Phase 12: Encrypted-Only Vaults + Agent Multi-Vault (done)
 
-- [ ] Vault creation accepts `encrypted_only` flag
-- [ ] `PATCH /api/vaults/{name}` for settings updates
-- [ ] Verify sync + Quartz builder skip encrypted-only vaults
-- [ ] Update `agent/entrypoint.sh` — accept `VAULT_NAME` env var, multi-vault paths
-- [ ] Stub `POST /api/vaults/{name}/agent` (501 + CLI instructions)
-- [ ] **Checkpoint**: encrypted-only vault skipped by sync/viewer; agent targets
-      specific vault via `VAULT_NAME`
+- [x] Vault creation accepts `encrypted_only` flag (already in Phase 7+11)
+- [x] `VaultUpdate` model + `PATCH /api/vaults/{name}` — owner/admin can
+      toggle `encrypted_only`; `update_vault()` service method
+- [x] Sync + Quartz builder skip encrypted-only vaults (already in Phase 8+9)
+- [x] `agent/entrypoint.sh` — dual-mode: `VAULT_NAME` env var for multi-vault
+      (fetches passphrase from registry, skips encrypted-only) or legacy
+      single-vault (`COUCHDB_DATABASE` + `LIVESYNC_PASSPHRASE`)
+- [x] `agent-multi` docker-compose service with admin credentials + `VAULT_NAME`;
+      legacy `agent` service and `agent-vault` volume preserved
+- [x] `POST /api/vaults/{name}/agent` stub (501 + CLI instructions)
+- [x] 89 pytest unit tests (8 new: PATCH settings, 403/404/401, agent stub,
+      vault service update)
+- [x] **Checkpoint**: ✅ `PATCH /api/vaults/name {"encrypted_only":true}` →
+      sync-multi + Quartz skip it; agent-multi targets vault by name;
+      encrypted-only agent exits cleanly
 
 ### Phase 13: Kubernetes Manifests
 

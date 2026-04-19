@@ -172,3 +172,82 @@ def test_get_setup_uri(api_client, user_headers):
     assert body["setup_uri"].startswith("obsidian://setuplivesync?")
     assert body["uri_passphrase"] == "autumn-river"
     svc.get_setup_uri.assert_called_once_with("team-wiki", "user@co.com")
+
+
+# ── PATCH /api/vaults/{name} ────────────────────────────────────────────
+
+def test_patch_vault_settings(api_client, admin_headers):
+    client, svc = api_client
+    svc.get_vault.return_value = VaultInfo(
+        name="my-vault", owner="admin@co.com", members=["admin@co.com"],
+    )
+    svc.update_vault.return_value = VaultInfo(
+        name="my-vault", owner="admin@co.com", members=["admin@co.com"],
+        encrypted_only=True,
+    )
+
+    r = client.patch(
+        "/api/vaults/my-vault",
+        json={"encrypted_only": True},
+        headers=admin_headers,
+    )
+
+    assert r.status_code == 200
+    assert r.json()["encrypted_only"] is True
+    svc.update_vault.assert_called_once_with("my-vault", encrypted_only=True)
+
+
+def test_patch_vault_not_owner_returns_403(api_client, user_headers):
+    client, svc = api_client
+    svc.get_vault.return_value = VaultInfo(
+        name="my-vault", owner="other@co.com", members=["other@co.com", "user@co.com"],
+    )
+
+    r = client.patch(
+        "/api/vaults/my-vault",
+        json={"encrypted_only": True},
+        headers=user_headers,
+    )
+
+    assert r.status_code == 403
+
+
+def test_patch_vault_not_found_returns_404(api_client, admin_headers):
+    client, svc = api_client
+    svc.get_vault.return_value = None
+
+    r = client.patch(
+        "/api/vaults/nonexistent",
+        json={"encrypted_only": True},
+        headers=admin_headers,
+    )
+
+    assert r.status_code == 404
+
+
+def test_patch_vault_no_auth(api_client):
+    client, _ = api_client
+    r = client.patch("/api/vaults/my-vault", json={"encrypted_only": True})
+    assert r.status_code == 401
+
+
+# ── POST /api/vaults/{name}/agent ───────────────────────────────────────
+
+def test_agent_stub_returns_501(api_client, user_headers):
+    client, svc = api_client
+    svc.get_vault.return_value = VaultInfo(
+        name="my-vault", owner="user@co.com", members=["user@co.com"],
+    )
+
+    r = client.post("/api/vaults/my-vault/agent", headers=user_headers)
+
+    assert r.status_code == 501
+    body = r.json()
+    assert "not yet implemented" in body["detail"].lower()
+    assert "my-vault" in body["cli"]
+
+
+def test_agent_stub_no_auth(api_client):
+    client, _ = api_client
+    r = client.post("/api/vaults/my-vault/agent")
+    assert r.status_code == 401
