@@ -156,10 +156,14 @@ async def test_get_setup_uri_returns_obsidian_uri(service, mock_couch):
 
     # Mock the subprocess call to generate_setupuri.ts
     with patch("app.vault_service.generate_setup_uri") as mock_gen:
-        mock_gen.return_value = "obsidian://setuplivesync?settings=encrypted-blob"
+        mock_gen.return_value = {
+            "setup_uri": "obsidian://setuplivesync?settings=encrypted-blob",
+            "uri_passphrase": "autumn-river",
+        }
 
-        uri = await service.get_setup_uri("team-wiki", "alice@co.com")
+        result = await service.get_setup_uri("team-wiki", "alice@co.com")
 
-        assert uri.startswith("obsidian://setuplivesync?")
+        assert result["setup_uri"].startswith("obsidian://setuplivesync?")
+        assert result["uri_passphrase"] == "autumn-river"
         mock_couch.get_passphrase.assert_called_with("team-wiki")
         mock_couch.ensure_user.assert_called_with("alice@co.com")

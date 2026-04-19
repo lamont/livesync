@@ -16,8 +16,10 @@ async def generate_setup_uri(
     password: str,
     database: str,
     passphrase: str,
-) -> str:
+) -> dict:
     """Generate an Obsidian LiveSync Setup URI.
+
+    Returns ``{"setup_uri": "obsidian://...", "uri_passphrase": "word-word"}``.
 
     Shells out to the upstream generate_setupuri.ts Deno script to guarantee
     encryption compatibility with the Obsidian plugin.  Falls back to a
@@ -44,20 +46,34 @@ async def generate_setup_uri(
         )
         stdout, stderr = await proc.communicate()
         output = stdout.decode()
+        uri = ""
+        uri_passphrase = ""
         for line in output.splitlines():
             if line.startswith("obsidian://setuplivesync?"):
-                return line.strip()
-        raise RuntimeError(f"No setup URI in output: {output} {stderr.decode()}")
+                uri = line.strip()
+            if "passphrase" in line.lower() and ":" in line:
+                # Line like "Your passphrase of Setup-URI is:  autumn-river"
+                uri_passphrase = line.split(":", 1)[1].strip()
+        if not uri:
+            raise RuntimeError(f"No setup URI in output: {output} {stderr.decode()}")
+        return {"setup_uri": uri, "uri_passphrase": uri_passphrase}
     except FileNotFoundError:
         # Deno not installed — return a placeholder for testing
-        return f"obsidian://setuplivesync?settings=placeholder-{database}"
+        return {
+            "setup_uri": f"obsidian://setuplivesync?settings=placeholder-{database}",
+            "uri_passphrase": "test-placeholder",
+        }
 
 
 class VaultService:
     """Orchestrates vault creation, listing, sharing, and Setup URI generation."""
 
-    def __init__(self, couch: CouchClient):
+    def __init__(self, couch: CouchClient, external_couch_url: str | None = None):
         self.couch = couch
+        # URL that end-user clients (Obsidian desktop, agents) use to reach
+        # CouchDB.  Defaults to couch.base_url but should be overridden in
+        # docker-compose (localhost:5984) vs K8s (ALB hostname).
+        self.external_couch_url = external_couch_url or couch.base_url
 
     async def provision_user(self, email: str) -> str:
         """Ensure a CouchDB user exists for this email. Returns the password."""
@@ -132,12 +148,15 @@ class VaultService:
                 )
         return None
 
-    async def get_setup_uri(self, vault_name: str, email: str) -> str:
-        """Generate a Setup URI for a user to connect to a vault."""
+    async def get_setup_uri(self, vault_name: str, email: str) -> dict:
+        """Generate a Setup URI for a user to connect to a vault.
+
+        Returns ``{"setup_uri": "obsidian://...", "uri_passphrase": "word-word"}``.
+        """
         passphrase = await self.couch.get_passphrase(vault_name)
         password = await self.couch.ensure_user(email)
         return await generate_setup_uri(
-            couch_url=self.couch.base_url,
+            couch_url=self.external_couch_url,
             username=email,
             password=password,
             database=vault_name,

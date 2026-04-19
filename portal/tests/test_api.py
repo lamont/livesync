@@ -146,11 +146,15 @@ def test_get_vault_not_found(api_client, user_headers):
 
 def test_get_setup_uri(api_client, user_headers):
     client, svc = api_client
-    svc.get_setup_uri.return_value = "obsidian://setuplivesync?settings=encrypted-blob"
+    svc.get_setup_uri.return_value = {
+        "setup_uri": "obsidian://setuplivesync?settings=encrypted-blob",
+        "uri_passphrase": "autumn-river",
+    }
 
     r = client.get("/api/vaults/team-wiki/setup-uri", headers=user_headers)
 
     assert r.status_code == 200
     body = r.json()
     assert body["setup_uri"].startswith("obsidian://setuplivesync?")
+    assert body["uri_passphrase"] == "autumn-river"
     svc.get_setup_uri.assert_called_once_with("team-wiki", "user@co.com")

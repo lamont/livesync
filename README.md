@@ -100,15 +100,67 @@ it, pushes results back. Exits on completion.
 cp .env.example .env
 # Edit .env with your credentials
 
-# Phase 1: Start CouchDB
-docker compose up -d couchdb
-# Connect Obsidian desktop via LiveSync plugin to localhost:5984
+# Start CouchDB + Portal
+docker compose up -d couchdb portal
+docker compose run --rm couchdb-init
 
-# Phase 2: Start sync + viewer
-docker compose up -d sync viewer
-# Browse wiki at http://localhost:8080
+# Portal is at http://localhost:8000 (login: admin@localhost / admin)
+# CouchDB admin UI at http://localhost:5984/_utils/
+```
 
-# Phase 3: Run agent
+### Create a vault and connect Obsidian
+
+1. **Create a vault** via the portal API:
+   ```bash
+   curl -u admin@localhost:admin -X POST \
+     -H "Content-Type: application/json" \
+     -d '{"name":"my-wiki"}' \
+     http://localhost:8000/api/vaults
+   ```
+
+2. **Get the Setup URI** (includes CouchDB credentials + encryption passphrase):
+   ```bash
+   curl -u admin@localhost:admin \
+     http://localhost:8000/api/vaults/my-wiki/setup-uri
+   ```
+   This returns a JSON object with `setup_uri` and `uri_passphrase`.
+
+3. **Connect Obsidian desktop**:
+   - Install the [Self-hosted LiveSync](https://github.com/vrtmrz/obsidian-livesync)
+     community plugin
+   - Open Settings → LiveSync → **"Use the copied setup URI"**
+   - Paste the `setup_uri` value, enter the `uri_passphrase` when prompted
+   - On the decision page, choose based on your scenario:
+
+   | Scenario | Choose |
+   |---|---|
+   | New vault (you're the first device) | **"Setting up for the first time"** |
+   | Joining an existing vault | **"My remote server is already setup"** |
+   | Re-configuring a synced device | **"Setup already and compatible"** |
+
+4. **Start sync + viewer** (optional — renders vault as a web wiki):
+   ```bash
+   docker compose up -d sync viewer
+   # Browse at http://localhost:8080
+   ```
+
+### Local users
+
+Edit `portal/users.yaml` to add or remove users (changes take effect
+immediately, no restart needed):
+
+```yaml
+- email: alice@example.com
+  password: changeme
+  groups: [livesync-admin]
+- email: bob@example.com
+  password: changeme
+  groups: [eng]
+```
+
+### Run the agent
+
+```bash
 docker compose run agent -p "initialize the wiki"
 docker compose run agent -p "query: what is in this wiki?"
 ```

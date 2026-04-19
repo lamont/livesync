@@ -22,7 +22,10 @@ def get_vault_service() -> VaultService:
             admin_user=os.environ.get("COUCHDB_USER", "admin"),
             admin_password=os.environ.get("COUCHDB_PASSWORD", ""),
         )
-        _vault_service = VaultService(couch)
+        _vault_service = VaultService(
+            couch,
+            external_couch_url=os.environ.get("COUCHDB_EXTERNAL_URI"),
+        )
     return _vault_service
 
 
@@ -63,5 +66,5 @@ async def get_vault(name: str, request: Request):
 async def get_setup_uri(name: str, request: Request):
     user = request.state.user
     svc = get_vault_service()
-    uri = await svc.get_setup_uri(name, user.email)
-    return {"setup_uri": uri}
+    result = await svc.get_setup_uri(name, user.email)
+    return result
