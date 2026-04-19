@@ -76,16 +76,16 @@ services:
       - vaults:/data/vaults
     restart: unless-stopped
 
-  viewer:
-    build:
-      context: ./viewer
-    depends_on:
-      - sync
-    ports:
-      - "8080:8080"
-    volumes:
-      - vault:/vault:ro
-    restart: unless-stopped
+  # viewer: replaced by portal's per-vault Quartz builds (Phase 9)
+  #   build:
+  #     context: ./viewer
+  #   depends_on:
+  #     - sync
+  #   ports:
+  #     - "8080:8080"
+  #   volumes:
+  #     - vault:/vault:ro
+  #   restart: unless-stopped
 
   agent:
     build:
@@ -123,10 +123,13 @@ services:
       COUCHDB_PASSWORD: ${COUCHDB_PASSWORD:?Set COUCHDB_PASSWORD in .env}
     volumes:
       - ./portal/users.yaml:/app/users.yaml:ro
+      - vaults:/vaults:ro
+      - static:/static
     restart: unless-stopped
 
 volumes:
   couchdb-data:
   vault:
   vaults:
+  static:
   agent-vault:

@@ -65,20 +65,42 @@
 - [x] Dynamic vault discovery (new vaults picked up each cycle)
 - [x] **Checkpoint**: ✅ two vaults bootstrapped + synced in smoke test
 
-### Phase 9: Per-Vault Quartz Builds + Portal Viewer
+### Phase 9: Per-Vault Quartz Builds + Portal Viewer (done)
 
-- [ ] Create `portal/app/quartz_builder.py` — background task: per-vault
-      `npx quartz build`, mtime tracking, skips encrypted-only
-- [ ] Create `portal/app/routes/vaults.py` — `GET /vaults/{name}/{path}` serves
-      static Quartz output with access checks (403 for non-members)
-- [ ] Create `portal/templates/home.html` — vault list with links
-- [ ] Update `portal/Dockerfile` — add Node.js 22 + Quartz
-- [ ] Update `docker-compose.yml` — mount `vaults` + `static` into portal;
-      comment out old `viewer` service
-- [ ] **Checkpoint**: push markdown → sync → Quartz build → browse
-      `localhost:8000/vaults/<name>/` → rendered wiki; non-member → 403
+- [x] `portal/app/quartz_builder.py` — background asyncio task: per-vault
+      `npx quartz build`, mtime tracking, skips encrypted-only, fallback index
+- [x] `portal/app/routes/vaults.py` — `GET /vaults/{name}/{path}` serves
+      static Quartz output with path-traversal protection + access checks
+- [x] `portal/templates/home.html` — vault list with links, badges, access info
+- [x] `portal/app/routes/home.py` — renders Jinja2 template with user's vaults
+- [x] `portal/Dockerfile` — multi-stage: Node.js 22 + Quartz v4 + Python 3.12
+- [x] `docker-compose.yml` — `vaults:ro` + `static` volumes on portal;
+      old `viewer` service commented out
+- [x] `portal/app/main.py` — lifespan-based startup for Quartz builder
+- [x] **Checkpoint**: ✅ markdown synced → Quartz build → browse
+      `localhost:8000/vaults/my-wiki/` → rendered wiki; non-member → 403
 
-### Phase 10: Vault Sharing + First-Login Flow
+### Phase 10: Observability — Prometheus Metrics (done)
+
+- [x] `prometheus_client` added to portal dependencies
+- [x] `portal/app/metrics.py` — metric definitions + periodic gauge collector
+- [x] `GET /metrics` endpoint (unauthenticated, Prometheus exposition format)
+- [x] HTTP request middleware: `livesync_http_requests_total{method,endpoint,status}`,
+      `livesync_http_request_duration_seconds{method,endpoint}` histogram
+- [x] Quartz builder instrumentation: `livesync_quartz_builds_total{vault,status}`,
+      `livesync_quartz_build_duration_seconds{vault}` histogram
+- [x] Sync status files: `sync/multi-entrypoint.sh` writes `.sync-status.json`
+      per vault (cumulative counts + timestamps for sync/mirror ok/fail)
+- [x] Portal reads sync status from `vaults` volume:
+      `livesync_sync_total{vault,op,status}`,
+      `livesync_sync_last_success_seconds{vault,op}`
+- [x] Periodic gauge refresh: `livesync_vaults_total`,
+      `livesync_vaults_encrypted_total`, `livesync_vault_docs_total{vault}`
+      (CouchDB doc counts per vault)
+- [x] **Checkpoint**: ✅ `curl localhost:8000/metrics` returns valid Prometheus
+      exposition with all 9 metric families populated
+
+### Phase 11: Vault Sharing + First-Login Flow
 
 - [ ] Create `portal/templates/` — base.html, welcome.html, vault_detail.html,
       admin.html
@@ -90,7 +112,7 @@
 - [ ] **Checkpoint**: new user → `/welcome` → creates vault → shares with email →
       second user sees it; admin → `/admin/` shows all vaults
 
-### Phase 11: Encrypted-Only Vaults + Agent Multi-Vault
+### Phase 12: Encrypted-Only Vaults + Agent Multi-Vault
 
 - [ ] Vault creation accepts `encrypted_only` flag
 - [ ] `PATCH /api/vaults/{name}` for settings updates
@@ -100,7 +122,7 @@
 - [ ] **Checkpoint**: encrypted-only vault skipped by sync/viewer; agent targets
       specific vault via `VAULT_NAME`
 
-### Phase 12: Kubernetes Manifests
+### Phase 13: Kubernetes Manifests
 
 - [ ] Create `chart/portal-deployment.yaml` + `chart/portal-service.yaml`
 - [ ] Create `chart/ingress.yaml` — ALB with OIDC on portal paths, passthrough
@@ -111,7 +133,7 @@
 - [ ] Update `chart/kustomization.yaml` + `build-push.sh`
 - [ ] **Checkpoint**: `kubectl apply -k chart/ --dry-run=client` passes
 
-### Phase 13: Production Hardening + Documentation
+### Phase 14: Production Hardening + Documentation
 
 - [ ] Create `scripts/test-e2e.sh` — automated acceptance tests
 - [ ] Create `scripts/migrate-single-to-multi.sh` — migration for existing vaults

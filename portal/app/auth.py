@@ -47,7 +47,7 @@ JWT_ALGORITHMS = ["HS256", "RS256", "ES256"]
 USERS_FILE = os.environ.get("USERS_FILE", "/app/users.yaml")
 
 # Paths that never require authentication.
-PUBLIC_PATHS = {"/healthz"}
+PUBLIC_PATHS = {"/healthz", "/metrics"}
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────

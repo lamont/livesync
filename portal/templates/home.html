@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LiveSync Portal</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f5f5; color: #333; }
+    .container { max-width: 800px; margin: 0 auto; padding: 2rem 1rem; }
+    header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; }
+    header h1 { font-size: 1.5rem; }
+    .user-info { color: #666; font-size: 0.9rem; }
+    .vault-list { list-style: none; }
+    .vault-card { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 1rem 1.25rem; margin-bottom: 0.75rem; display: flex; justify-content: space-between; align-items: center; }
+    .vault-card:hover { border-color: #4a9eff; box-shadow: 0 2px 8px rgba(74,158,255,.15); }
+    .vault-name { font-weight: 600; font-size: 1.1rem; }
+    .vault-name a { color: #1a73e8; text-decoration: none; }
+    .vault-name a:hover { text-decoration: underline; }
+    .vault-meta { color: #888; font-size: 0.85rem; }
+    .vault-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 500; }
+    .badge-owner { background: #e8f5e9; color: #2e7d32; }
+    .badge-member { background: #e3f2fd; color: #1565c0; }
+    .badge-group { background: #fff3e0; color: #e65100; }
+    .badge-encrypted { background: #fce4ec; color: #c62828; }
+    .empty { text-align: center; color: #999; padding: 3rem 1rem; }
+    .empty p { margin-bottom: 1rem; }
+    code { background: #eee; padding: 2px 6px; border-radius: 3px; font-size: 0.85rem; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>LiveSync Portal</h1>
+      <span class="user-info">{{ user.email }}</span>
+    </header>
+
+    {% if vaults %}
+    <ul class="vault-list">
+      {% for v in vaults %}
+      <li class="vault-card">
+        <div>
+          <div class="vault-name">
+            {% if v.encrypted_only %}
+              {{ v.name }}
+            {% else %}
+              <a href="/vaults/{{ v.name }}/">{{ v.name }}</a>
+            {% endif %}
+          </div>
+          <div class="vault-meta">
+            owned by {{ v.owner }}
+            {% if v.members|length > 1 %} &middot; {{ v.members|length }} members{% endif %}
+          </div>
+        </div>
+        <div>
+          {% if v.owner == user.email %}
+            <span class="vault-badge badge-owner">owner</span>
+          {% elif user.email in v.members %}
+            <span class="vault-badge badge-member">member</span>
+          {% else %}
+            <span class="vault-badge badge-group">group</span>
+          {% endif %}
+          {% if v.encrypted_only %}
+            <span class="vault-badge badge-encrypted">encrypted</span>
+          {% endif %}
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <div class="empty">
+      <p>No vaults yet.</p>
+      <p>Create one via the API: <code>POST /api/vaults</code></p>
+    </div>
+    {% endif %}
+  </div>
+</body>
+</html>

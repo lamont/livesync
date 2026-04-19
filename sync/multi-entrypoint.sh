@@ -119,6 +119,31 @@ bootstrap_vault() {
   echo "[init] vault ${vault_name} bootstrapped"
 }
 
+update_sync_status() {
+  # Write/update .sync-status.json for a vault with cumulative counters.
+  # Usage: update_sync_status <vault_name> <op> <ok|fail>
+  local vault_name="$1" op="$2" result="$3"
+  local status_file="${VAULTS_DIR}/${vault_name}/.sync-status.json"
+  local now
+  now=$(date +%s)
+
+  # Read existing or start fresh
+  local data
+  if [ -f "$status_file" ]; then
+    data=$(cat "$status_file")
+  else
+    data='{"sync_ok_count":0,"sync_fail_count":0,"mirror_ok_count":0,"mirror_fail_count":0,"last_sync_ok":0,"last_sync_fail":0,"last_mirror_ok":0,"last_mirror_fail":0}'
+  fi
+
+  # Increment the appropriate counter and set the timestamp
+  local key="${op}_${result}_count"
+  local ts_key="last_${op}_${result}"
+  data=$(echo "$data" | jq --arg k "$key" --arg ts_k "$ts_key" --argjson now "$now" \
+    '.[$k] = ((.[$k] // 0) + 1) | .[$ts_k] = $now')
+
+  echo "$data" > "$status_file"
+}
+
 sync_vault() {
   local vault_name="$1"
   local vault_dir="${VAULTS_DIR}/${vault_name}"
@@ -129,9 +154,22 @@ sync_vault() {
   if ! $cli sync 2>/dev/null; then
     accept_sync_nodes "$vault_name"
     # Retry after accepting
-    $cli sync || echo "[warn] sync failed for ${vault_name}"
+    if $cli sync; then
+      update_sync_status "$vault_name" sync ok
+    else
+      echo "[warn] sync failed for ${vault_name}"
+      update_sync_status "$vault_name" sync fail
+    fi
+  else
+    update_sync_status "$vault_name" sync ok
   fi
-  $cli mirror || echo "[warn] mirror failed for ${vault_name}"
+
+  if $cli mirror; then
+    update_sync_status "$vault_name" mirror ok
+  else
+    echo "[warn] mirror failed for ${vault_name}"
+    update_sync_status "$vault_name" mirror fail
+  fi
 }
 
 # ── Main loop ────────────────────────────────────────────────────────────────
