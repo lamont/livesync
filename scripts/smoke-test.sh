@@ -153,12 +153,11 @@ else
 fi
 
 # ── CouchDB init check ──────────────────────────────────────────────────────
-# Start couchdb-init to create databases, then check they exist
-$COMPOSE up -d couchdb-init 2>/dev/null
-sleep 5
+# Run couchdb-init to create databases (including registry + passphrases)
+$COMPOSE run --rm couchdb-init 2>/dev/null
 
 COUCH_URL="http://${COUCHDB_USER:-admin}:${COUCHDB_PASSWORD:-livesync-dev-2026}@localhost:5984"
-for db in _users _replicator obsidian-wiki; do
+for db in _users _replicator obsidian-wiki livesync-registry livesync-passphrases; do
     HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$COUCH_URL/$db")
     if [ "$HTTP_CODE" = "200" ]; then
         pass "CouchDB database '$db' exists"
@@ -166,6 +165,71 @@ for db in _users _replicator obsidian-wiki; do
         fail "CouchDB database '$db' returned $HTTP_CODE (expected 200)"
     fi
 done
+
+# ── Phase 7: Vault API tests ────────────────────────────────────────────────
+# Create a vault via the API
+RESPONSE=$(curl -s -u "admin@localhost:admin" -X POST \
+    -H "Content-Type: application/json" \
+    -d '{"name":"test-vault"}' \
+    http://localhost:8000/api/vaults)
+VAULT_NAME=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('name',''))" 2>/dev/null)
+if [ "$VAULT_NAME" = "test-vault" ]; then
+    pass "Vault API: created vault 'test-vault'"
+else
+    fail "Vault API: create returned name='$VAULT_NAME' (expected test-vault). Response: $RESPONSE"
+fi
+
+# Verify the CouchDB database was created
+HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$COUCH_URL/test-vault")
+if [ "$HTTP_CODE" = "200" ]; then
+    pass "Vault API: CouchDB database 'test-vault' exists"
+else
+    fail "Vault API: CouchDB database 'test-vault' returned $HTTP_CODE"
+fi
+
+# Verify _security was set on the vault
+SECURITY=$(curl -s "$COUCH_URL/test-vault/_security")
+SEC_ADMIN=$(echo "$SECURITY" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('admins',{}).get('names',[]))" 2>/dev/null)
+if echo "$SEC_ADMIN" | grep -q "admin@localhost"; then
+    pass "Vault API: _security has owner as admin"
+else
+    fail "Vault API: _security admins='$SEC_ADMIN' (expected admin@localhost)"
+fi
+
+# List vaults — should include the one we just created
+RESPONSE=$(curl -s -u "admin@localhost:admin" http://localhost:8000/api/vaults)
+VAULT_COUNT=$(echo "$RESPONSE" | python3 -c "import sys,json; print(len(json.load(sys.stdin)))" 2>/dev/null)
+if [ "$VAULT_COUNT" -ge 1 ]; then
+    pass "Vault API: list returns $VAULT_COUNT vault(s)"
+else
+    fail "Vault API: list returned $VAULT_COUNT vaults (expected >= 1)"
+fi
+
+# Get vault detail
+RESPONSE=$(curl -s -u "admin@localhost:admin" http://localhost:8000/api/vaults/test-vault)
+OWNER=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('owner',''))" 2>/dev/null)
+if [ "$OWNER" = "admin@localhost" ]; then
+    pass "Vault API: detail shows correct owner"
+else
+    fail "Vault API: detail returned owner='$OWNER'"
+fi
+
+# Get setup URI
+RESPONSE=$(curl -s -u "admin@localhost:admin" http://localhost:8000/api/vaults/test-vault/setup-uri)
+SETUP_URI=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('setup_uri',''))" 2>/dev/null)
+if echo "$SETUP_URI" | grep -q "^obsidian://setuplivesync?"; then
+    pass "Vault API: setup URI starts with obsidian://setuplivesync?"
+else
+    fail "Vault API: setup URI='$SETUP_URI'"
+fi
+
+# Get nonexistent vault → 404
+HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -u "admin@localhost:admin" http://localhost:8000/api/vaults/nonexistent)
+if [ "$HTTP_CODE" = "404" ]; then
+    pass "Vault API: nonexistent vault returns 404"
+else
+    fail "Vault API: nonexistent vault returned $HTTP_CODE (expected 404)"
+fi
 
 # ── Summary ──────────────────────────────────────────────────────────────────
 echo
