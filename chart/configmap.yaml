@@ -5,6 +5,8 @@ metadata:
   namespace: livesync
 data:
   COUCHDB_USER: admin
-  COUCHDB_DATABASE: obsidian-wiki
   COUCHDB_URI: http://couchdb:5984
+  # COUCHDB_EXTERNAL_URI should be set to the ALB hostname for CouchDB
+  # (used in Setup URIs so Obsidian desktop can reach CouchDB).
+  COUCHDB_EXTERNAL_URI: https://livesync.example.com:5984
   SYNC_INTERVAL: "60"

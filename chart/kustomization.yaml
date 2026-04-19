@@ -5,16 +5,19 @@ resources:
   - namespace.yaml
   - storageclass.yaml
   - pvc-couchdb.yaml
-  - pvc-vault.yaml
+  - pvc-vaults.yaml
+  - pvc-static.yaml
+  - pvc-agent.yaml
   - configmap.yaml
   - secret.yaml
   - couchdb-service.yaml
   - couchdb-statefulset.yaml
   - couchdb-init-job.yaml
   - sync-deployment.yaml
-  - viewer-deployment.yaml
-  - viewer-service.yaml
+  - portal-deployment.yaml
+  - portal-service.yaml
   - agent-job.yaml
+  - ingress.yaml
 
 # Map logical image names to ECR.  `build-push.sh` publishes as
 # eqincubatingimages:{component}-latest in eq-shared-services.
@@ -22,9 +25,9 @@ images:
   - name: livesync-sync
     newName: 497689819904.dkr.ecr.us-east-1.amazonaws.com/eqincubatingimages
     newTag: sync-latest
-  - name: livesync-viewer
+  - name: livesync-portal
     newName: 497689819904.dkr.ecr.us-east-1.amazonaws.com/eqincubatingimages
-    newTag: viewer-latest
+    newTag: portal-latest
   - name: livesync-agent
     newName: 497689819904.dkr.ecr.us-east-1.amazonaws.com/eqincubatingimages
     newTag: agent-latest

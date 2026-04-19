@@ -24,18 +24,18 @@ GIT_SHA=$(git rev-parse --short HEAD 2>/dev/null || echo "dev")
 declare -A CONTEXTS=(
   [livesync-cli]="vendor/obsidian-livesync"
   [sync]="sync"
-  [viewer]="viewer"
+  [portal]="portal"
   [agent]="agent"
 )
 declare -A DOCKERFILES=(
   [livesync-cli]="vendor/obsidian-livesync/src/apps/cli/Dockerfile"
   [sync]="sync/Dockerfile"
-  [viewer]="viewer/Dockerfile"
+  [portal]="portal/Dockerfile"
   [agent]="agent/Dockerfile"
 )
 
 # livesync-cli is a build dependency, not pushed separately by default
-PUSHABLE=(sync viewer agent)
+PUSHABLE=(sync portal agent)
 
 # If args given, only build+push those (but always build livesync-cli first)
 TARGETS=("${@:-${PUSHABLE[@]}}")

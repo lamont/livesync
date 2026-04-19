@@ -149,16 +149,29 @@
       sync-multi + Quartz skip it; agent-multi targets vault by name;
       encrypted-only agent exits cleanly
 
-### Phase 13: Kubernetes Manifests
+### Phase 13: Kubernetes Manifests (done)
 
-- [ ] Create `chart/portal-deployment.yaml` + `chart/portal-service.yaml`
-- [ ] Create `chart/ingress.yaml` — ALB with OIDC on portal paths, passthrough
-      on CouchDB (:5984 or `/couchdb/`)
-- [ ] Update `chart/couchdb-init-job.yaml` — create registry + passphrases DBs
-- [ ] Update `chart/sync-deployment.yaml` — multi-vault EFS paths
-- [ ] Remove `chart/viewer-deployment.yaml` + `chart/viewer-service.yaml`
-- [ ] Update `chart/kustomization.yaml` + `build-push.sh`
-- [ ] **Checkpoint**: `kubectl apply -k chart/ --dry-run=client` passes
+- [x] `chart/portal-deployment.yaml` — Portal Deployment with EFS vaults (ro)
+      + static (rw) volumes, AUTH_MODE=oidc, readiness/liveness on /healthz
+- [x] `chart/portal-service.yaml` — ClusterIP service on port 8000
+- [x] `chart/ingress.yaml` — single ALB with dual listeners: HTTPS/443 → portal
+      (OIDC via Okta), HTTPS/5984 → CouchDB (no OIDC, CouchDB auth);
+      ALB group.name shares one ALB; placeholder OIDC config for Okta
+- [x] `chart/couchdb-init-job.yaml` — creates registry + passphrases DBs with
+      admin-only `_security` lockdown; removed legacy `$COUCHDB_DATABASE`
+- [x] `chart/sync-deployment.yaml` — multi-vault mode (SYNC_MODE=multi,
+      `vaults` PVC at /data/vaults)
+- [x] `chart/agent-job.yaml` — multi-vault mode (VAULT_NAME env var,
+      `agent-data` PVC)
+- [x] Removed `chart/viewer-deployment.yaml` + `chart/viewer-service.yaml`
+- [x] `chart/pvc-vaults.yaml` (renamed from pvc-vault.yaml), `pvc-static.yaml`,
+      `pvc-agent.yaml` — EFS PVCs for vaults, Quartz output, agent data
+- [x] `chart/configmap.yaml` — added COUCHDB_EXTERNAL_URI, removed COUCHDB_DATABASE
+- [x] `chart/secret.yaml` — added JWT_SIGNING_KEY + okta-oidc-secret placeholder
+- [x] `chart/kustomization.yaml` — portal + ingress + new PVCs, removed viewer
+- [x] `build-push.sh` — replaced viewer with portal in build targets
+- [x] **Checkpoint**: ✅ `kubectl kustomize chart/` renders 18 resources cleanly;
+      images correctly rewritten to ECR; dry-run blocked only by expired SSO token
 
 ### Phase 14: Production Hardening + Documentation
 

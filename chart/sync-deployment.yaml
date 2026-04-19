@@ -18,14 +18,17 @@ spec:
       containers:
         - name: sync
           image: livesync-sync
+          env:
+            - name: SYNC_MODE
+              value: multi
           envFrom:
             - configMapRef:
                 name: livesync-config
             - secretRef:
                 name: livesync-secrets
           volumeMounts:
-            - name: vault
-              mountPath: /data
+            - name: vaults
+              mountPath: /data/vaults
           resources:
             requests:
               cpu: 100m
@@ -34,6 +37,6 @@ spec:
               cpu: 500m
               memory: 256Mi
       volumes:
-        - name: vault
+        - name: vaults
           persistentVolumeClaim:
-            claimName: vault
+            claimName: vaults

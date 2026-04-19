@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: portal
+  namespace: livesync
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: portal
+  template:
+    metadata:
+      labels:
+        app: portal
+    spec:
+      containers:
+        - name: portal
+          image: livesync-portal
+          ports:
+            - containerPort: 8000
+          env:
+            - name: AUTH_MODE
+              value: oidc
+            - name: VAULTS_DIR
+              value: /vaults
+            - name: STATIC_DIR
+              value: /static
+          envFrom:
+            - configMapRef:
+                name: livesync-config
+            - secretRef:
+                name: livesync-secrets
+          volumeMounts:
+            - name: vaults
+              mountPath: /vaults
+              readOnly: true
+            - name: static
+              mountPath: /static
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 500m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+      volumes:
+        - name: vaults
+          persistentVolumeClaim:
+            claimName: vaults
+        - name: static
+          persistentVolumeClaim:
+            claimName: static

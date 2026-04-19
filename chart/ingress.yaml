@@ -1,0 +1,82 @@
+# Single ALB with two listeners:
+#   - HTTPS/443 → portal (OIDC-authenticated via Okta)
+#   - TCP/5984  → CouchDB (no OIDC — LiveSync protocol uses CouchDB auth)
+#
+# Replace placeholder values:
+#   - CERTIFICATE_ARN: ACM certificate for your domain
+#   - OIDC issuer/endpoints: your Okta org URL
+#   - client-id/secret: Okta OIDC app credentials (store secret via ExternalSecrets)
+#   - livesync.example.com: your actual hostname
+
+# ── Portal Ingress (OIDC on :443) ───────────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: portal
+  namespace: livesync
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
+    alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:us-east-1:ACCOUNT:certificate/CERTIFICATE_ID
+    alb.ingress.kubernetes.io/group.name: livesync
+
+    # OIDC auth — Okta
+    alb.ingress.kubernetes.io/auth-type: oidc
+    alb.ingress.kubernetes.io/auth-idp-oidc: |
+      {
+        "issuer": "https://YOUR_OKTA_ORG.okta.com/oauth2/default",
+        "authorizationEndpoint": "https://YOUR_OKTA_ORG.okta.com/oauth2/default/v1/authorize",
+        "tokenEndpoint": "https://YOUR_OKTA_ORG.okta.com/oauth2/default/v1/token",
+        "userInfoEndpoint": "https://YOUR_OKTA_ORG.okta.com/oauth2/default/v1/userinfo",
+        "secretName": "okta-oidc-secret"
+      }
+    alb.ingress.kubernetes.io/auth-scope: openid email profile groups
+    alb.ingress.kubernetes.io/auth-session-cookie: AWSELBAuthSessionCookie
+    alb.ingress.kubernetes.io/auth-session-timeout: "86400"
+    alb.ingress.kubernetes.io/auth-on-unauthenticated-request: authenticate
+spec:
+  rules:
+    - host: livesync.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: portal
+                port:
+                  number: 8000
+
+---
+
+# ── CouchDB Ingress (no OIDC on :5984) ──────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: couchdb
+  namespace: livesync
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":5984}]'
+    alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:us-east-1:ACCOUNT:certificate/CERTIFICATE_ID
+    alb.ingress.kubernetes.io/group.name: livesync
+
+    # No OIDC auth — CouchDB uses its own credentials
+    alb.ingress.kubernetes.io/healthcheck-path: /_up
+    alb.ingress.kubernetes.io/healthcheck-port: "5984"
+spec:
+  rules:
+    - host: livesync.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: couchdb
+                port:
+                  number: 5984
