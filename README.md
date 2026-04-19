@@ -110,7 +110,7 @@ docker compose run --rm couchdb-init
 
 ### Create a vault and connect Obsidian
 
-1. **Create a vault** via the portal API:
+1. **Create the vault in the portal** (provisions the CouchDB database):
    ```bash
    curl -u admin@localhost:admin -X POST \
      -H "Content-Type: application/json" \
@@ -123,26 +123,52 @@ docker compose run --rm couchdb-init
    curl -u admin@localhost:admin \
      http://localhost:8000/api/vaults/my-wiki/setup-uri
    ```
-   This returns a JSON object with `setup_uri` and `uri_passphrase`.
+   This returns `setup_uri` and `uri_passphrase`. Save both.
 
-3. **Connect Obsidian desktop**:
-   - Install the [Self-hosted LiveSync](https://github.com/vrtmrz/obsidian-livesync)
-     community plugin
-   - Open Settings → LiveSync → **"Use the copied setup URI"**
+3. **Create a matching vault in Obsidian** (this is a separate step — the Setup
+   URI configures sync but does not create the Obsidian vault):
+
+   > **WARNING:** The Setup URI reconfigures LiveSync in *whichever vault is
+   > currently open*. If you apply it in an existing vault (e.g. one already
+   > syncing elsewhere), it **will overwrite that vault's LiveSync settings**.
+   > Always create or switch to the intended vault first.
+
+   - In Obsidian: **File menu → Open another vault → Create new vault**
+   - Name it anything you like (the name is local-only; the CouchDB database
+     name comes from the portal, not from Obsidian)
+   - Obsidian opens the new empty vault
+
+4. **Install and configure LiveSync** in the new vault:
+   - Settings → Community plugins → Browse → install **Self-hosted LiveSync**
+   - Enable the plugin, then open its settings
+   - Choose **"Use the copied setup URI"**
    - Paste the `setup_uri` value, enter the `uri_passphrase` when prompted
-   - On the decision page, choose based on your scenario:
+
+5. **Choose the setup mode** on the decision page:
 
    | Scenario | Choose |
    |---|---|
-   | New vault (you're the first device) | **"Setting up for the first time"** |
-   | Joining an existing vault | **"My remote server is already setup"** |
-   | Re-configuring a synced device | **"Setup already and compatible"** |
+   | First device connecting to a new vault | **"Setting up for the first time"** |
+   | Joining a vault another device already pushed to | **"My remote server is already setup"** |
+   | Re-configuring a device that was already syncing | **"Setup already and compatible"** |
 
-4. **Start sync + viewer** (optional — renders vault as a web wiki):
+   For a brand-new vault, choose **"Setting up for the first time"**. This
+   pushes your (empty) local state to the server and establishes the sync
+   relationship. Future devices joining the same vault use option 2.
+
+6. **Start sync + viewer** (optional — renders vault content as a web wiki):
    ```bash
    docker compose up -d sync viewer
    # Browse at http://localhost:8080
    ```
+
+#### Multiple vaults
+
+Each Obsidian vault has independent LiveSync settings (stored in
+`.obsidian/plugins/obsidian-livesync/`). You can sync different vaults to
+different CouchDB databases and switch between them freely using Obsidian's
+vault switcher. The Setup URI only affects the vault that is open when you
+apply it.
 
 ### Local users
 
