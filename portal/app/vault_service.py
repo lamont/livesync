@@ -83,6 +83,11 @@ class VaultService:
         self, owner_email: str, name: str, *, encrypted_only: bool = False
     ) -> VaultInfo:
         """Create a new vault: CouchDB database + security + registry + passphrase."""
+        # 0. Check for duplicate name
+        existing = await self.couch.get_registry()
+        if any(d.get("name") == name for d in existing):
+            raise ValueError(f"Vault '{name}' already exists")
+
         # 1. Create the CouchDB database
         await self.couch.create_database(name)
 

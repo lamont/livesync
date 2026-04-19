@@ -42,6 +42,7 @@ async def test_provision_user_calls_ensure_user(service, mock_couch):
 async def test_create_vault_orchestrates_all_steps(service, mock_couch):
     """create_vault should: create DB, set security, store passphrase,
     write registry doc, and return VaultInfo."""
+    mock_couch.get_registry.return_value = []
     mock_couch.ensure_user.return_value = "pw123"
 
     vault = await service.create_vault("alice@co.com", "my-vault")
@@ -68,7 +69,23 @@ async def test_create_vault_orchestrates_all_steps(service, mock_couch):
 
 
 @pytest.mark.asyncio
+async def test_create_vault_rejects_duplicate_name(service, mock_couch):
+    """Creating a vault with an existing name should raise."""
+    mock_couch.get_registry.return_value = [
+        {"name": "taken", "owner": "bob@co.com", "members": ["bob@co.com"],
+         "groups": [], "encrypted_only": False},
+    ]
+
+    with pytest.raises(ValueError, match="already exists"):
+        await service.create_vault("alice@co.com", "taken")
+
+    # Should NOT have created the database
+    mock_couch.create_database.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_create_vault_encrypted_only(service, mock_couch):
+    mock_couch.get_registry.return_value = []
     mock_couch.ensure_user.return_value = "pw123"
 
     vault = await service.create_vault("alice@co.com", "secret", encrypted_only=True)
@@ -84,12 +101,14 @@ async def test_create_vault_encrypted_only(service, mock_couch):
 @pytest.mark.asyncio
 async def test_create_vault_generates_passphrase(service, mock_couch):
     """Each vault gets a unique E2EE passphrase."""
+    mock_couch.get_registry.return_value = []
     mock_couch.ensure_user.return_value = "pw"
 
     await service.create_vault("a@co.com", "vault-1")
     pp1 = mock_couch.store_passphrase.call_args.args[1]
 
     mock_couch.reset_mock()
+    mock_couch.get_registry.return_value = []
     await service.create_vault("a@co.com", "vault-2")
     pp2 = mock_couch.store_passphrase.call_args.args[1]
 

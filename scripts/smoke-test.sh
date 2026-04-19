@@ -231,6 +231,86 @@ else
     fail "Vault API: nonexistent vault returned $HTTP_CODE (expected 404)"
 fi
 
+# ── Phase 8: Multi-vault sync ────────────────────────────────────────────────
+# The test-vault created above should be discovered by sync-multi and synced
+# to /data/vaults/test-vault/. Since the CouchDB database is empty (no Obsidian
+# client pushed content), we verify that sync-multi at least bootstraps the
+# vault directory and creates settings.
+
+echo "==> Building livesync-cli base image..."
+docker buildx build --platform linux/$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/') \
+    -f vendor/obsidian-livesync/src/apps/cli/Dockerfile \
+    -t livesync-cli:local --load \
+    vendor/obsidian-livesync 2>&1 | tail -3
+
+echo "==> Starting sync-multi..."
+$COMPOSE up -d --build sync-multi 2>/dev/null
+
+# Wait for sync-multi to complete at least one cycle
+echo -n "  Waiting for sync-multi bootstrap..."
+SYNC_OK=false
+for i in $(seq 1 20); do
+    # Check if the vault directory was created inside the container
+    if $COMPOSE exec -T sync-multi test -f "/data/vaults/test-vault/.livesync/settings.json" 2>/dev/null; then
+        SYNC_OK=true
+        break
+    fi
+    sleep 3
+    echo -n "."
+done
+echo
+
+if $SYNC_OK; then
+    pass "Multi-vault sync: bootstrapped test-vault settings"
+else
+    fail "Multi-vault sync: test-vault settings not found after 60s"
+    # Show logs for debugging
+    echo "  --- sync-multi logs ---"
+    $COMPOSE logs --tail=20 sync-multi 2>/dev/null || true
+    echo "  ---"
+fi
+
+# Verify the vault directory exists
+if $COMPOSE exec -T sync-multi test -d "/data/vaults/test-vault" 2>/dev/null; then
+    pass "Multi-vault sync: vault directory exists at /data/vaults/test-vault"
+else
+    fail "Multi-vault sync: vault directory not found"
+fi
+
+# Create a second vault and verify sync-multi picks it up on next cycle
+RESPONSE=$(curl -s -u "admin@localhost:admin" -X POST \
+    -H "Content-Type: application/json" \
+    -d '{"name":"test-vault-2"}' \
+    http://localhost:8000/api/vaults)
+VAULT2_NAME=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('name',''))" 2>/dev/null)
+if [ "$VAULT2_NAME" = "test-vault-2" ]; then
+    pass "Multi-vault sync: created second vault 'test-vault-2'"
+else
+    fail "Multi-vault sync: could not create second vault"
+fi
+
+# Wait for sync-multi to discover and bootstrap the second vault
+echo -n "  Waiting for sync-multi to discover test-vault-2..."
+SYNC2_OK=false
+for i in $(seq 1 25); do
+    if $COMPOSE exec -T sync-multi test -d "/data/vaults/test-vault-2" 2>/dev/null; then
+        SYNC2_OK=true
+        break
+    fi
+    sleep 3
+    echo -n "."
+done
+echo
+
+if $SYNC2_OK; then
+    pass "Multi-vault sync: discovered and bootstrapped test-vault-2"
+else
+    fail "Multi-vault sync: test-vault-2 not discovered after 75s"
+    echo "  --- sync-multi logs ---"
+    $COMPOSE logs --tail=30 sync-multi 2>/dev/null || true
+    echo "  ---"
+fi
+
 # ── Summary ──────────────────────────────────────────────────────────────────
 echo
 echo "=== Summary ==="

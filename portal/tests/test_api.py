@@ -79,6 +79,20 @@ def test_create_vault_encrypted_only(api_client, admin_headers):
     assert r.json()["encrypted_only"] is True
 
 
+def test_create_vault_duplicate_returns_409(api_client, admin_headers):
+    client, svc = api_client
+    svc.create_vault.side_effect = ValueError("Vault 'taken' already exists")
+
+    r = client.post(
+        "/api/vaults",
+        json={"name": "taken"},
+        headers=admin_headers,
+    )
+
+    assert r.status_code == 409
+    assert "already exists" in r.json()["detail"]
+
+
 def test_create_vault_no_auth(api_client):
     client, _ = api_client
     r = client.post("/api/vaults", json={"name": "x"})

@@ -60,6 +60,22 @@ services:
       - vault:/data
     restart: unless-stopped
 
+  sync-multi:
+    build:
+      context: ./sync
+    depends_on:
+      couchdb:
+        condition: service_healthy
+    environment:
+      SYNC_MODE: multi
+      COUCHDB_URI: http://couchdb:5984
+      COUCHDB_USER: ${COUCHDB_USER:-admin}
+      COUCHDB_PASSWORD: ${COUCHDB_PASSWORD:?Set COUCHDB_PASSWORD in .env}
+      SYNC_INTERVAL: ${SYNC_INTERVAL:-60}
+    volumes:
+      - vaults:/data/vaults
+    restart: unless-stopped
+
   viewer:
     build:
       context: ./viewer
@@ -112,4 +128,5 @@ services:
 volumes:
   couchdb-data:
   vault:
+  vaults:
   agent-vault:

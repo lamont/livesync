@@ -39,11 +39,14 @@ def set_vault_service(svc: VaultService | None) -> None:
 async def create_vault(body: VaultCreate, request: Request):
     user = request.state.user
     svc = get_vault_service()
-    return await svc.create_vault(
-        owner_email=user.email,
-        name=body.name,
-        encrypted_only=body.encrypted_only,
-    )
+    try:
+        return await svc.create_vault(
+            owner_email=user.email,
+            name=body.name,
+            encrypted_only=body.encrypted_only,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
 
 
 @router.get("/vaults", response_model=list[VaultInfo])
