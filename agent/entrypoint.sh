@@ -34,7 +34,7 @@ if [ ! -f "$SETTINGS" ]; then
     const fs=require("fs");
     const p="'"$SETTINGS"'";
     const s=JSON.parse(fs.readFileSync(p,"utf8"));
-    s.syncIgnoreRegEx=["^data-.*-livesync-v2(/|$)","^\\\\.livesync(/|$)","^\\\\.livesync-snapshot\\\\.json$"].join("|[]|");
+    s.syncIgnoreRegEx=["^.*-livesync-v2(/|$)","^.*-headless-app-livesync-v2(/|$)","^\\\\.livesync(/|$)","^\\\\.livesync-snapshot\\\\.json$"].join("|[]|");
     s.disableCheckingConfigMismatch=true;
     fs.writeFileSync(p,JSON.stringify(s,null,2));
     console.log("[init] syncIgnoreRegEx set");

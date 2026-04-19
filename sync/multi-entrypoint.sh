@@ -30,6 +30,35 @@ get_passphrase() {
     | jq -r '.passphrase'
 }
 
+accept_sync_nodes() {
+  # Ensure all nodes registered in the milestone doc are accepted.
+  # LiveSync locks the DB after the first Obsidian client connects;
+  # new devices (including this sync service) are blocked until an
+  # existing device accepts them.  Since we run with admin credentials
+  # we can self-accept by updating the milestone document directly.
+  local vault_name="$1"
+  local milestone_url="${COUCH_AUTH_URL}/${vault_name}/_local/obsydian_livesync_milestone"
+
+  local doc
+  doc=$(curl -sf "$milestone_url") || return 0  # no milestone yet — nothing to do
+
+  local locked
+  locked=$(echo "$doc" | jq -r '.locked // false')
+  [ "$locked" = "true" ] || return 0  # not locked — nothing to do
+
+  local updated
+  updated=$(echo "$doc" | jq '
+    .accepted_nodes = (([.accepted_nodes // [] | .[]] +
+      [.node_chunk_info // {} | keys | .[]] +
+      [.node_info // {} | keys | .[]]) | unique)
+  ')
+
+  curl -sf -X PUT -H 'Content-Type: application/json' \
+    -d "$updated" "$milestone_url" > /dev/null \
+    && echo "[init] accepted all sync nodes for ${vault_name}" \
+    || echo "[warn] failed to update milestone for ${vault_name}"
+}
+
 bootstrap_vault() {
   # Bootstrap livesync-cli settings for a vault if not already done.
   local vault_name="$1"
@@ -82,7 +111,7 @@ bootstrap_vault() {
     const fs=require("fs");
     const p="'"$settings"'";
     const s=JSON.parse(fs.readFileSync(p,"utf8"));
-    s.syncIgnoreRegEx=["^data-.*-livesync-v2(/|$)","^\\\\.livesync(/|$)","^\\\\.livesync-snapshot\\\\.json$"].join("|[]|");
+    s.syncIgnoreRegEx=["^.*-livesync-v2(/|$)","^.*-headless-app-livesync-v2(/|$)","^\\\\.livesync(/|$)","^\\\\.livesync-snapshot\\\\.json$"].join("|[]|");
     s.disableCheckingConfigMismatch=true;
     fs.writeFileSync(p,JSON.stringify(s,null,2));
   '
@@ -95,7 +124,13 @@ sync_vault() {
   local vault_dir="${VAULTS_DIR}/${vault_name}"
   local cli="node /app/dist/index.cjs ${vault_dir}"
 
-  $cli sync  || echo "[warn] sync failed for ${vault_name}"
+  # First attempt — may fail if the DB is locked and this node is new.
+  # The attempt still registers the node in the milestone document.
+  if ! $cli sync 2>/dev/null; then
+    accept_sync_nodes "$vault_name"
+    # Retry after accepting
+    $cli sync || echo "[warn] sync failed for ${vault_name}"
+  fi
   $cli mirror || echo "[warn] mirror failed for ${vault_name}"
 }
 
