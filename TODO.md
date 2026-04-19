@@ -37,48 +37,33 @@
 
 ## Multi-Tenant Vault Platform (Phases 6–13)
 
-### Phase 6: Portal Skeleton + Fake JWT Auth
+### Phase 6: Portal Skeleton + Fake JWT Auth (done)
 
-- [ ] Create `portal/pyproject.toml` — FastAPI, uvicorn, python-jose, httpx, jinja2
-- [ ] Create `portal/Dockerfile` — Python 3.12-slim + uv, runs uvicorn on :8000
-- [ ] Create `portal/app/main.py` — FastAPI app with lifespan, middleware
-- [ ] Create `portal/app/auth.py` — JWT middleware: reads `x-amzn-oidc-data`,
-      extracts email + groups, sets `request.state.user`, `is_admin` from
-      `livesync-admin` group
-- [ ] Create `portal/app/models.py` — Pydantic: User, VaultInfo, VaultCreate
-- [ ] Create `portal/app/routes/health.py` — `GET /healthz`
-- [ ] Create `portal/app/routes/home.py` — `GET /` returns user info JSON
-- [ ] Create `scripts/fake-jwt.py` — generates signed JWT with email + groups
-- [ ] Update `docker-compose.yml` — add `portal` service on :8000
-- [ ] Update `.env.example` — add `JWT_SIGNING_KEY`
-- [ ] **Checkpoint**: fake JWT → `curl localhost:8000/` → user info; no header → 401
+- [x] FastAPI portal with dual auth: OIDC (x-amzn-oidc-data JWT) + local
+      (HTTP Basic + users.yaml). `AUTH_MODE=oidc|local` env var.
+- [x] `scripts/fake-jwt.py` for curl-based testing
+- [x] `scripts/smoke-test.sh` for docker compose integration tests
+- [x] 26 pytest unit tests (auth, models, routes)
+- [x] **Checkpoint**: ✅ both auth modes working, 401 on missing/bad auth
 
-### Phase 7: CouchDB User Provisioning + Vault Registry
+### Phase 7: CouchDB User Provisioning + Vault Registry (done)
 
-- [ ] Create `portal/app/couch.py` — async CouchDB client (httpx):
-      `ensure_user()`, `create_database()`, `set_security()`, registry CRUD,
-      passphrase storage
-- [ ] Create `portal/app/vault_service.py` — business logic: `provision_user()`,
-      `create_vault()`, `list_vaults_for_user()`, `get_setup_uri()` (shells out
-      to Deno `generate_setupuri.ts`)
-- [ ] Create `portal/app/routes/api.py` — `POST /api/vaults`, `GET /api/vaults`,
-      `GET /api/vaults/{name}`, `GET /api/vaults/{name}/setup-uri`
-- [ ] Update `portal/Dockerfile` — add Deno + copy `generate_setupuri.ts`
-- [ ] Update `couchdb-init` — create `_livesync_registry` +
-      `_livesync_passphrases` databases with admin-only `_security`
-- [ ] **Checkpoint**: create vault via API → CouchDB DB exists with `_security`;
-      get Setup URI → valid `obsidian://setuplivesync?...` URL
+- [x] `portal/app/couch.py` — async CouchDB client (httpx)
+- [x] `portal/app/vault_service.py` — vault CRUD, Setup URI generation
+- [x] `portal/app/routes/api.py` — POST/GET /api/vaults, setup-uri endpoint
+- [x] `livesync-registry` + `livesync-passphrases` CouchDB databases
+- [x] Vault name uniqueness check (409 on duplicate)
+- [x] `COUCHDB_EXTERNAL_URI` for host-reachable Setup URIs
+- [x] `disableCheckingConfigMismatch` + `liveSync` baked into Setup URI defaults
+- [x] **Checkpoint**: ✅ end-to-end vault creation + Obsidian desktop connected
 
-### Phase 8: Multi-Vault Sync
+### Phase 8: Multi-Vault Sync (done)
 
-- [ ] Create `sync/multi-entrypoint.sh` — queries `_livesync_registry`, bootstraps
-      + syncs each vault to `/data/vaults/<name>/`
-- [ ] Update `sync/Dockerfile` — add `curl`, `jq`; `SYNC_MODE=multi|single`
-      selects entrypoint
-- [ ] Update `docker-compose.yml` — sync uses `SYNC_MODE=multi`, volume
-      `vaults:/data/vaults`, admin creds
-- [ ] **Checkpoint**: create vault via API → connect Obsidian → push notes →
-      files appear at `/data/vaults/<name>/` after sync cycle
+- [x] `sync/multi-entrypoint.sh` — registry-driven vault discovery + sync
+- [x] `SYNC_MODE=multi|single` selects entrypoint
+- [x] `sync-multi` docker-compose service with `vaults` volume
+- [x] Dynamic vault discovery (new vaults picked up each cycle)
+- [x] **Checkpoint**: ✅ two vaults bootstrapped + synced in smoke test
 
 ### Phase 9: Per-Vault Quartz Builds + Portal Viewer
 
