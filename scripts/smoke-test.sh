@@ -157,7 +157,7 @@ fi
 $COMPOSE run --rm couchdb-init 2>/dev/null
 
 COUCH_URL="http://${COUCHDB_USER:-admin}:${COUCHDB_PASSWORD:-livesync-dev-2026}@localhost:5984"
-for db in _users _replicator obsidian-wiki livesync-registry livesync-passphrases; do
+for db in _users _replicator obsidian-wiki livesync-registry livesync-passphrases livesync-passwords; do
     HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$COUCH_URL/$db")
     if [ "$HTTP_CODE" = "200" ]; then
         pass "CouchDB database '$db' exists"

@@ -8,6 +8,7 @@ import httpx
 # Registry and passphrase databases — created by couchdb-init.
 REGISTRY_DB = "livesync-registry"
 PASSPHRASES_DB = "livesync-passphrases"
+PASSWORDS_DB = "livesync-passwords"
 
 
 class CouchClient:
@@ -27,13 +28,26 @@ class CouchClient:
 
     # ── User management ──────────────────────────────────────────────────────
 
-    async def ensure_user(self, email: str) -> str:
+    async def ensure_user(self, email: str, *, reset_password: bool = False) -> str:
         """Ensure a CouchDB user exists for *email*.  Returns the password.
 
-        If the user already exists we reset the password (since we don't store
-        CouchDB passwords outside of CouchDB).  This is safe because the only
-        consumer of the password is the Setup URI generator.
+        By default, if the user already exists the stored password is returned
+        from the ``livesync-passwords`` database (created on first call).  Pass
+        ``reset_password=True`` to force a new password — use this only when
+        generating a Setup URI so the URI contains a known-good credential.
         """
+        pwd_doc_id = f"pwd:{email}"
+
+        # Ensure the passwords DB exists (idempotent)
+        await self.create_database(PASSWORDS_DB)
+
+        # Check if we already have a stored password for this user
+        if not reset_password:
+            resp = await self._http.get(f"/{PASSWORDS_DB}/{pwd_doc_id}")
+            if resp.status_code == 200:
+                return resp.json()["password"]
+
+        # Generate a new password
         password = secrets.token_urlsafe(24)
         doc_id = f"org.couchdb.user:{email}"
         url = f"/_users/{doc_id}"
@@ -51,6 +65,14 @@ class CouchClient:
             doc["_rev"] = resp.json()["_rev"]
 
         await self._http.put(url, json=doc)
+
+        # Persist the password so future calls don't reset it
+        pwd_doc = {"_id": pwd_doc_id, "password": password}
+        resp = await self._http.get(f"/{PASSWORDS_DB}/{pwd_doc_id}")
+        if resp.status_code == 200:
+            pwd_doc["_rev"] = resp.json()["_rev"]
+        await self._http.put(f"/{PASSWORDS_DB}/{pwd_doc_id}", json=pwd_doc)
+
         return password
 
     # ── Database management ──────────────────────────────────────────────────
@@ -119,6 +141,15 @@ class CouchClient:
             elif groups_set & set(doc.get("groups", [])):
                 result.append(doc)
         return result
+
+    async def get_registry_doc(self, vault_name: str) -> dict | None:
+        """Fetch a single vault registry doc by name.  Returns None if missing."""
+        doc_id = f"vault:{vault_name}"
+        resp = await self._http.get(f"/{REGISTRY_DB}/{doc_id}")
+        if resp.status_code == 404:
+            return None
+        resp.raise_for_status()
+        return resp.json()
 
     # ── Passphrase storage ───────────────────────────────────────────────────
 

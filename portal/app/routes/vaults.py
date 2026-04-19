@@ -4,11 +4,13 @@ import os
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.templating import Jinja2Templates
 from starlette.responses import FileResponse
 
 from .api import get_vault_service
 
 router = APIRouter()
+templates = Jinja2Templates(directory="templates")
 
 STATIC_DIR = Path(os.environ.get("STATIC_DIR", "/static"))
 
@@ -24,6 +26,26 @@ def _user_can_access(user, vault) -> bool:
     if set(user.groups) & set(vault.groups):
         return True
     return False
+
+
+@router.get("/vaults/{name}/detail")
+async def vault_detail(name: str, request: Request):
+    """Vault detail page with member management and Setup URI."""
+    user = request.state.user
+    svc = get_vault_service()
+
+    vault = await svc.get_vault(name)
+    if vault is None:
+        raise HTTPException(status_code=404, detail="Vault not found")
+    if not _user_can_access(user, vault):
+        raise HTTPException(status_code=403, detail="Not a member of this vault")
+
+    is_owner = vault.owner == user.email
+    return templates.TemplateResponse(
+        request,
+        name="vault_detail.html",
+        context={"user": user, "vault": vault, "is_owner": is_owner},
+    )
 
 
 @router.get("/vaults/{name}/{path:path}")
@@ -55,6 +77,12 @@ async def serve_vault(name: str, path: str, request: Request):
 
     if file_path.is_file():
         return FileResponse(file_path)
+
+    # Quartz emits pages as page-name.html but the explorer links use
+    # extension-less slugs (e.g. ./page-name).  Try .html suffix.
+    html_path = file_path.with_suffix(".html")
+    if html_path.is_file():
+        return FileResponse(html_path)
 
     # Try index.html for directory-style paths
     index = file_path / "index.html"

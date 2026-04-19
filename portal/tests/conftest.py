@@ -22,6 +22,15 @@ class _FakeVaultService:
     async def get_setup_uri(self, vault_name, email):
         return {"setup_uri": "obsidian://test", "uri_passphrase": "test"}
 
+    async def list_all_vaults(self):
+        return []
+
+    async def share_vault(self, vault_name, email):
+        return None
+
+    async def unshare_vault(self, vault_name, email):
+        return None
+
 
 @pytest.fixture(autouse=True)
 def _mock_vault_service():

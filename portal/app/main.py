@@ -17,7 +17,7 @@ from .metrics import (
     metrics_output,
 )
 from .quartz_builder import QuartzBuilder
-from .routes import api, health, home, vaults
+from .routes import admin, api, health, home, vaults, welcome
 
 logging.basicConfig(level=logging.INFO)
 
@@ -48,6 +48,8 @@ app.add_middleware(AuthMiddleware)
 
 app.include_router(health.router)
 app.include_router(home.router)
+app.include_router(welcome.router)
+app.include_router(admin.router)
 app.include_router(api.router)
 app.include_router(vaults.router)
 

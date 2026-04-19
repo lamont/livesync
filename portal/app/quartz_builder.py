@@ -8,6 +8,7 @@ Encrypted-only vaults (per the CouchDB registry) are skipped.
 import asyncio
 import logging
 import os
+import re
 import time
 from pathlib import Path
 
@@ -79,11 +80,26 @@ class QuartzBuilder:
             if ok:
                 self._mtimes[name] = mtime
 
+    def _patch_quartz_config(self, vault_name: str) -> None:
+        """Set pageTitle in quartz.config.ts to the vault name before building."""
+        config_path = Path(QUARTZ_DIR) / "quartz.config.ts"
+        if not config_path.exists():
+            return
+        config = config_path.read_text()
+        config = re.sub(
+            r'(pageTitle:\s*)"[^"]*"',
+            rf'\1"{vault_name}"',
+            config,
+        )
+        config_path.write_text(config)
+
     async def _build_vault(self, name: str) -> bool:
         """Run npx quartz build for a single vault. Returns True on success."""
         content_dir = str(self.vaults_dir / name)
         output_dir = str(self.static_dir / name)
         os.makedirs(output_dir, exist_ok=True)
+
+        self._patch_quartz_config(name)
 
         start = time.monotonic()
         try:
@@ -135,8 +151,10 @@ class QuartzBuilder:
         )
         index.write_text(f"""<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>{name}</title>
-<style>body{{font-family:sans-serif;max-width:700px;margin:2rem auto;padding:0 1rem}}
-a{{color:#1a73e8}}li{{margin:.4rem 0}}</style></head>
+<style>body{{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+max-width:700px;margin:2rem auto;padding:0 1rem;background:#161618;color:#d4d4d4}}
+a{{color:#7b97aa}}a:hover{{color:#84a59d}}li{{margin:.5rem 0}}
+h1{{color:#ebebec;border-bottom:1px solid #393639;padding-bottom:.5rem}}</style></head>
 <body><h1>{name}</h1><ul>
 {links}
 </ul></body></html>

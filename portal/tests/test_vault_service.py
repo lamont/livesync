@@ -147,19 +147,21 @@ async def test_list_vaults_empty(service, mock_couch):
 
 @pytest.mark.asyncio
 async def test_get_vault_exists(service, mock_couch):
-    mock_couch.get_registry.return_value = [
-        {"name": "team-wiki", "owner": "alice@co.com", "members": ["alice@co.com"],
-         "groups": [], "encrypted_only": False},
-    ]
+    mock_couch.get_registry_doc.return_value = {
+        "_id": "vault:team-wiki",
+        "name": "team-wiki", "owner": "alice@co.com", "members": ["alice@co.com"],
+        "groups": [], "encrypted_only": False,
+    }
 
     vault = await service.get_vault("team-wiki")
     assert vault is not None
     assert vault.name == "team-wiki"
+    mock_couch.get_registry_doc.assert_called_once_with("team-wiki")
 
 
 @pytest.mark.asyncio
 async def test_get_vault_not_found(service, mock_couch):
-    mock_couch.get_registry.return_value = []
+    mock_couch.get_registry_doc.return_value = None
 
     vault = await service.get_vault("nonexistent")
     assert vault is None
@@ -185,4 +187,4 @@ async def test_get_setup_uri_returns_obsidian_uri(service, mock_couch):
         assert result["setup_uri"].startswith("obsidian://setuplivesync?")
         assert result["uri_passphrase"] == "autumn-river"
         mock_couch.get_passphrase.assert_called_with("team-wiki")
-        mock_couch.ensure_user.assert_called_with("alice@co.com")
+        mock_couch.ensure_user.assert_called_with("alice@co.com", reset_password=True)

@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}LiveSync Portal{% endblock %}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 text-gray-800 font-sans">
+  <nav class="bg-white border-b px-4 py-3">
+    <div class="max-w-4xl mx-auto flex justify-between items-center">
+      <div class="flex items-center gap-4">
+        <a href="/" class="text-lg font-semibold text-gray-900 hover:text-gray-700">LiveSync Portal</a>
+        {% if user.is_admin %}
+        <a href="/admin/" class="text-sm text-blue-600 hover:underline">Admin</a>
+        {% endif %}
+      </div>
+      <span class="text-sm text-gray-500">{{ user.email }}</span>
+    </div>
+  </nav>
+  <main class="max-w-4xl mx-auto px-4 py-8">
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

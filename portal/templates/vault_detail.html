@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+
+{% block title %}{{ vault.name }} - LiveSync Portal{% endblock %}
+
+{% block content %}
+<div class="mb-6">
+  <div class="flex items-center gap-3 mb-1">
+    <h2 class="text-2xl font-semibold">{{ vault.name }}</h2>
+    {% if vault.encrypted_only %}
+    <span class="inline-block px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">encrypted</span>
+    {% endif %}
+  </div>
+  <p class="text-gray-500 text-sm">Owned by {{ vault.owner }}</p>
+</div>
+
+<div class="grid gap-6 md:grid-cols-2">
+  <!-- Members -->
+  <div class="bg-white border border-gray-200 rounded-lg p-5">
+    <h3 class="font-medium text-gray-900 mb-3">Members</h3>
+    <ul class="space-y-2 mb-4" id="member-list">
+      {% for m in vault.members %}
+      <li class="flex justify-between items-center text-sm">
+        <span>{{ m }}{% if m == vault.owner %} <span class="text-gray-400">(owner)</span>{% endif %}</span>
+        {% if is_owner and m != vault.owner %}
+        <button onclick="removeMember('{{ m }}')" class="text-red-500 hover:text-red-700 text-xs">remove</button>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% if is_owner %}
+    <form id="add-member-form" class="flex gap-2">
+      <input type="email" id="new-member-email" placeholder="user@example.com" required
+             class="flex-1 border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+      <button type="submit" class="px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700">Add</button>
+    </form>
+    {% endif %}
+    <div id="member-error" class="hidden mt-2 text-sm text-red-600"></div>
+  </div>
+
+  <!-- Groups -->
+  <div class="bg-white border border-gray-200 rounded-lg p-5">
+    <h3 class="font-medium text-gray-900 mb-3">Groups</h3>
+    {% if vault.groups %}
+    <ul class="space-y-1">
+      {% for g in vault.groups %}
+      <li class="text-sm text-gray-700">{{ g }}</li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="text-sm text-gray-400">No group access configured.</p>
+    {% endif %}
+  </div>
+
+  <!-- Setup URI -->
+  <div class="bg-white border border-gray-200 rounded-lg p-5 md:col-span-2">
+    <h3 class="font-medium text-gray-900 mb-3">Connect with Obsidian</h3>
+    <p class="text-sm text-gray-600 mb-3">
+      Generate a Setup URI to connect your Obsidian desktop app to this vault.
+      Open Obsidian, create or switch to the target vault, then paste the URI.
+    </p>
+    <button id="get-uri-btn" onclick="getSetupUri()" class="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded hover:bg-green-700">
+      Generate Setup URI
+    </button>
+    <div id="uri-result" class="hidden mt-4 bg-gray-50 border border-gray-200 rounded p-4">
+      <div class="mb-2">
+        <label class="block text-xs font-medium text-gray-500 mb-1">Setup URI</label>
+        <div class="flex gap-2">
+          <input type="text" id="setup-uri" readonly class="flex-1 bg-white border border-gray-300 rounded px-3 py-1.5 text-xs font-mono">
+          <button onclick="copyToClipboard('setup-uri')" class="px-3 py-1.5 border border-gray-300 rounded text-xs hover:bg-gray-100">Copy</button>
+        </div>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-500 mb-1">URI Passphrase</label>
+        <div class="flex gap-2">
+          <input type="text" id="uri-passphrase" readonly class="flex-1 bg-white border border-gray-300 rounded px-3 py-1.5 text-xs font-mono">
+          <button onclick="copyToClipboard('uri-passphrase')" class="px-3 py-1.5 border border-gray-300 rounded text-xs hover:bg-gray-100">Copy</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Vault View Link -->
+  {% if not vault.encrypted_only %}
+  <div class="md:col-span-2">
+    <a href="/vaults/{{ vault.name }}/" class="text-blue-600 hover:underline text-sm">View rendered vault &rarr;</a>
+  </div>
+  {% endif %}
+</div>
+
+<script>
+const vaultName = '{{ vault.name }}';
+
+async function getSetupUri() {
+  const btn = document.getElementById('get-uri-btn');
+  btn.disabled = true;
+  btn.textContent = 'Generating...';
+  try {
+    const resp = await fetch(`/api/vaults/${encodeURIComponent(vaultName)}/setup-uri`, {credentials: 'same-origin'});
+    if (!resp.ok) throw new Error(`Error ${resp.status}`);
+    const data = await resp.json();
+    document.getElementById('setup-uri').value = data.setup_uri;
+    document.getElementById('uri-passphrase').value = data.uri_passphrase;
+    document.getElementById('uri-result').classList.remove('hidden');
+  } catch (err) {
+    alert(err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Generate Setup URI';
+  }
+}
+
+function copyToClipboard(id) {
+  const el = document.getElementById(id);
+  el.select();
+  navigator.clipboard.writeText(el.value);
+}
+
+{% if is_owner %}
+document.getElementById('add-member-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const email = document.getElementById('new-member-email').value.trim();
+  const errDiv = document.getElementById('member-error');
+  errDiv.classList.add('hidden');
+  try {
+    const resp = await fetch(`/api/vaults/${encodeURIComponent(vaultName)}/members`, {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      credentials: 'same-origin',
+      body: JSON.stringify({add: [email]}),
+    });
+    if (!resp.ok) {
+      const data = await resp.json();
+      throw new Error(data.detail || `Error ${resp.status}`);
+    }
+    window.location.reload();
+  } catch (err) {
+    errDiv.textContent = err.message;
+    errDiv.classList.remove('hidden');
+  }
+});
+
+async function removeMember(email) {
+  if (!confirm(`Remove ${email} from this vault?`)) return;
+  const errDiv = document.getElementById('member-error');
+  errDiv.classList.add('hidden');
+  try {
+    const resp = await fetch(`/api/vaults/${encodeURIComponent(vaultName)}/members`, {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      credentials: 'same-origin',
+      body: JSON.stringify({remove: [email]}),
+    });
+    if (!resp.ok) {
+      const data = await resp.json();
+      throw new Error(data.detail || `Error ${resp.status}`);
+    }
+    window.location.reload();
+  } catch (err) {
+    errDiv.textContent = err.message;
+    errDiv.classList.remove('hidden');
+  }
+}
+{% endif %}
+</script>
+{% endblock %}

@@ -100,17 +100,36 @@
 - [x] **Checkpoint**: ✅ `curl localhost:8000/metrics` returns valid Prometheus
       exposition with all 9 metric families populated
 
-### Phase 11: Vault Sharing + First-Login Flow
+### Phase 11: Vault Sharing + First-Login Flow (done)
 
-- [ ] Create `portal/templates/` — base.html, welcome.html, vault_detail.html,
-      admin.html
-- [ ] Create `portal/app/routes/welcome.py` — `GET /welcome` first-login flow
-- [ ] Create `portal/app/routes/admin.py` — `GET /admin/` dashboard (admin only)
-- [ ] Add `share_vault()` / `unshare_vault()` to vault_service.py
-- [ ] Add `PUT /api/vaults/{name}/members` to API routes
-- [ ] Redirect first-time users (no vaults) to `/welcome`
-- [ ] **Checkpoint**: new user → `/welcome` → creates vault → shares with email →
-      second user sees it; admin → `/admin/` shows all vaults
+- [x] `portal/templates/base.html` — shared Tailwind layout with nav
+- [x] `portal/templates/welcome.html` — first-login page with server-side
+      form POST (`POST /welcome` → redirect to /)
+- [x] `portal/templates/vault_detail.html` — vault metadata, member management
+      (add/remove), Setup URI generation with copy buttons
+- [x] `portal/templates/admin.html` — read-only all-vaults table
+- [x] `portal/templates/home.html` — refactored to extend base.html with
+      Tailwind, "Create Vault" button, vault detail links
+- [x] `portal/app/routes/welcome.py` — `GET /welcome` + `POST /welcome`
+      (server-side form, works with HTTP Basic Auth)
+- [x] `portal/app/routes/admin.py` — `GET /admin/` dashboard (403 if not admin)
+- [x] `portal/app/routes/vaults.py` — `GET /vaults/{name}/detail` vault detail
+      page with access control (above catch-all route); `.html` suffix fallback
+      for Quartz explorer's extension-less links
+- [x] `portal/app/vault_service.py` — `share_vault()`, `unshare_vault()`,
+      `list_all_vaults()`, `_sync_security()`, `_vault_info_from_doc()` helper;
+      server-side vault name validation (CouchDB lowercase requirement)
+- [x] `portal/app/couch.py` — `get_registry_doc()` for single-doc fetch
+- [x] `portal/app/models.py` — `MembersUpdate(add, remove)` model
+- [x] `PUT /api/vaults/{name}/members` — owner or admin can add/remove members
+- [x] Home route redirects to `/welcome` when user has no vaults (302)
+- [x] Per-vault Quartz `pageTitle` — sidebar title shows vault name, not "Quartz 4"
+- [x] Dark-mode fallback index (matches Quartz dark theme colors)
+- [x] `python-multipart` added to dependencies for form handling
+- [x] 81 pytest unit tests (27 new: sharing, members API, routes, form POST)
+- [x] **Checkpoint**: ✅ new user → `/welcome` → creates vault → shares with
+      email → second user sees it; admin → `/admin/` shows all vaults;
+      Quartz viewer links resolve correctly; vault names validated server-side
 
 ### Phase 12: Encrypted-Only Vaults + Agent Multi-Vault
 

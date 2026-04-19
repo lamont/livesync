@@ -5,7 +5,7 @@ import os
 from fastapi import APIRouter, HTTPException, Request
 
 from ..couch import CouchClient
-from ..models import VaultCreate, VaultInfo
+from ..models import MembersUpdate, VaultCreate, VaultInfo
 from ..vault_service import VaultService
 
 router = APIRouter(prefix="/api")
@@ -63,6 +63,31 @@ async def get_vault(name: str, request: Request):
     if vault is None:
         raise HTTPException(status_code=404, detail="Vault not found")
     return vault
+
+
+@router.put("/vaults/{name}/members", response_model=VaultInfo)
+async def update_members(name: str, body: MembersUpdate, request: Request):
+    user = request.state.user
+    svc = get_vault_service()
+
+    vault = await svc.get_vault(name)
+    if vault is None:
+        raise HTTPException(status_code=404, detail="Vault not found")
+    if vault.owner != user.email and not user.is_admin:
+        raise HTTPException(status_code=403, detail="Only the vault owner can manage members")
+
+    result = vault
+    for email in body.add:
+        try:
+            result = await svc.share_vault(name, email)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+    for email in body.remove:
+        try:
+            result = await svc.unshare_vault(name, email)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+    return result
 
 
 @router.get("/vaults/{name}/setup-uri")

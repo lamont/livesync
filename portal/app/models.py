@@ -18,3 +18,8 @@ class VaultInfo(BaseModel):
     members: list[str] = []
     groups: list[str] = []
     encrypted_only: bool = False
+
+
+class MembersUpdate(BaseModel):
+    add: list[str] = []
+    remove: list[str] = []

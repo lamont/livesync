@@ -22,45 +22,40 @@ def couch():
 
 @pytest.mark.asyncio
 async def test_ensure_user_creates_new_user(couch):
-    """First call for an email creates a CouchDB user doc and returns a password."""
+    """First call for an email creates a CouchDB user doc and stores the password."""
     with respx.mock(base_url=COUCH_URL) as mock:
+        # Ensure passwords DB exists
+        mock.put("/livesync-passwords").respond(412, json={"error": "file_exists"})
+        # No stored password yet
+        mock.get("/livesync-passwords/pwd:alice@co.com").respond(404)
         # Check if user exists → 404 (not found)
         mock.get("/_users/org.couchdb.user:alice@co.com").respond(404)
         # Create user → 201
         mock.put("/_users/org.couchdb.user:alice@co.com").respond(201, json={"ok": True})
+        # Store password
+        mock.put("/livesync-passwords/pwd:alice@co.com").respond(201, json={"ok": True})
 
         password = await couch.ensure_user("alice@co.com")
 
         assert isinstance(password, str)
-        assert len(password) >= 16  # should be a reasonable random password
-        # Verify the PUT was called with correct user doc structure
-        put_call = mock.calls[-1]
-        body = put_call.request.content
-        import json
-        doc = json.loads(body)
-        assert doc["name"] == "alice@co.com"
-        assert doc["type"] == "user"
-        assert "password" in doc
+        assert len(password) >= 16
 
 
 @pytest.mark.asyncio
 async def test_ensure_user_returns_existing_password(couch):
-    """If user already exists, return the stored/generated password without re-creating."""
+    """If user already exists, return the stored password without re-creating."""
     with respx.mock(base_url=COUCH_URL) as mock:
-        # User exists → 200
-        mock.get("/_users/org.couchdb.user:alice@co.com").respond(
-            200,
-            json={"_id": "org.couchdb.user:alice@co.com", "name": "alice@co.com", "_rev": "1-abc"},
+        # Ensure passwords DB exists
+        mock.put("/livesync-passwords").respond(412, json={"error": "file_exists"})
+        # Stored password found
+        mock.get("/livesync-passwords/pwd:alice@co.com").respond(
+            200, json={"_id": "pwd:alice@co.com", "password": "stored-pw-123"},
         )
-        # We need a way to get or regenerate the password for existing users.
-        # The service should store passwords in _livesync_passphrases or
-        # a user-password store. For now, ensure_user should regenerate and
-        # update the user doc if we don't have the password cached.
-        mock.put("/_users/org.couchdb.user:alice@co.com").respond(201, json={"ok": True})
 
         password = await couch.ensure_user("alice@co.com")
-        assert isinstance(password, str)
-        assert len(password) >= 16
+        assert password == "stored-pw-123"
+        # Should NOT have touched _users at all
+        assert not any("_users" in str(c.request.url) for c in mock.calls)
 
 
 # ── create_database ──────────────────────────────────────────────────────────
