@@ -7,6 +7,7 @@
 set -eu
 
 SYNC_INTERVAL="${SYNC_INTERVAL:-60}"
+BIDIRECTIONAL="${SYNC_BIDIRECTIONAL:-false}"
 COUCH_URL="${COUCHDB_URI:?COUCHDB_URI required}"
 COUCH_USER="${COUCHDB_USER:?COUCHDB_USER required}"
 COUCH_PASS="${COUCHDB_PASSWORD:?COUCHDB_PASSWORD required}"
@@ -149,6 +150,13 @@ sync_vault() {
   local vault_dir="${VAULTS_DIR}/${vault_name}"
   local cli="node /app/dist/index.cjs ${vault_dir}"
 
+  # Bidirectional: push local filesystem changes to CouchDB first
+  if [ "$BIDIRECTIONAL" = "true" ]; then
+    $cli mirror 2>/dev/null || echo "[warn] mirror (push) failed for ${vault_name}"
+    $cli sync   2>/dev/null || echo "[warn] sync (push) failed for ${vault_name}"
+  fi
+
+  # Pull remote changes from CouchDB to filesystem
   # First attempt — may fail if the DB is locked and this node is new.
   # The attempt still registers the node in the milestone document.
   if ! $cli sync 2>/dev/null; then

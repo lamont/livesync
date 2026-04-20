@@ -44,13 +44,23 @@ if [ ! -f "$SETTINGS" ]; then
   '
 fi
 
-echo "[boot] initial sync + mirror"
+BIDIRECTIONAL="${SYNC_BIDIRECTIONAL:-false}"
+
+echo "[boot] initial sync + mirror (bidirectional=${BIDIRECTIONAL})"
 $CLI sync || echo "[warn] initial sync failed"
 $CLI mirror || echo "[warn] initial mirror failed"
 
 echo "[loop] syncing every ${SYNC_INTERVAL}s"
 while true; do
   sleep "$SYNC_INTERVAL"
-  $CLI sync || echo "[warn] sync failed at $(date)"
+
+  # Bidirectional: push local filesystem changes to CouchDB first
+  if [ "$BIDIRECTIONAL" = "true" ]; then
+    $CLI mirror || echo "[warn] mirror (push) failed at $(date)"
+    $CLI sync   || echo "[warn] sync (push) failed at $(date)"
+  fi
+
+  # Pull remote changes from CouchDB to filesystem
+  $CLI sync  || echo "[warn] sync failed at $(date)"
   $CLI mirror || echo "[warn] mirror failed at $(date)"
 done

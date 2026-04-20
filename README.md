@@ -187,30 +187,129 @@ immediately, no restart needed):
 ### Run the agent
 
 ```bash
+# Legacy single-vault agent
 docker compose run agent -p "initialize the wiki"
-docker compose run agent -p "query: what is in this wiki?"
+
+# Multi-vault agent (targets a specific vault from the registry)
+docker compose run -e VAULT_NAME=my-wiki -e INSTRUCTION="query: what is in this wiki?" agent-multi
 ```
+
+### Headless sync (no Obsidian needed)
+
+You can keep a local directory of markdown files in sync with CouchDB without
+Obsidian. This is useful for editors, scripts, CI pipelines, or any machine
+that needs access to vault content as plain files.
+
+#### Single vault — one-way (CouchDB → local)
+
+```bash
+docker run -d --restart unless-stopped \
+  -v ~/wiki:/data \
+  -e COUCHDB_URI=http://your-couchdb:5984 \
+  -e COUCHDB_USER=admin \
+  -e COUCHDB_PASSWORD=changeme \
+  -e COUCHDB_DATABASE=my-wiki \
+  -e LIVESYNC_PASSPHRASE=your-e2ee-passphrase \
+  -e SYNC_INTERVAL=30 \
+  livesync-sync
+```
+
+Your `~/wiki/` directory will contain the vault's markdown files, updated
+every 30 seconds. The passphrase is the E2EE passphrase generated when the
+vault was created (available via `GET /api/vaults/{name}/setup-uri`).
+
+#### Single vault — bidirectional
+
+Add `SYNC_BIDIRECTIONAL=true` to also push local file changes back to CouchDB.
+Edits you make in `~/wiki/` will appear in Obsidian on other devices:
+
+```bash
+docker run -d --restart unless-stopped \
+  -v ~/wiki:/data \
+  -e COUCHDB_URI=http://your-couchdb:5984 \
+  -e COUCHDB_USER=admin \
+  -e COUCHDB_PASSWORD=changeme \
+  -e COUCHDB_DATABASE=my-wiki \
+  -e LIVESYNC_PASSPHRASE=your-e2ee-passphrase \
+  -e SYNC_INTERVAL=30 \
+  -e SYNC_BIDIRECTIONAL=true \
+  livesync-sync
+```
+
+#### Multi-vault — all vaults from the registry
+
+```bash
+docker run -d --restart unless-stopped \
+  -v ~/vaults:/data/vaults \
+  -e SYNC_MODE=multi \
+  -e COUCHDB_URI=http://your-couchdb:5984 \
+  -e COUCHDB_USER=admin \
+  -e COUCHDB_PASSWORD=changeme \
+  -e SYNC_INTERVAL=60 \
+  -e SYNC_BIDIRECTIONAL=true \
+  livesync-sync
+```
+
+This syncs all non-encrypted-only vaults to `~/vaults/my-wiki/`,
+`~/vaults/team-notes/`, etc. New vaults are picked up automatically.
+
+#### Using docker-compose
+
+If you're running the full stack, use the existing services with a bind mount:
+
+```bash
+# One-way sync of a single vault
+docker compose run -v ~/wiki:/data sync
+
+# Bidirectional multi-vault sync
+docker compose run -v ~/vaults:/data/vaults \
+  -e SYNC_BIDIRECTIONAL=true sync-multi
+```
+
+#### How it works
+
+The sync container uses `livesync-cli` (the headless LiveSync client):
+
+1. **Bootstrap** — on first run, generates a Setup URI and configures
+   `livesync-cli` against your CouchDB database (same protocol Obsidian uses)
+2. **Pull cycle** — `sync` (CouchDB ↔ local DB replication) then `mirror`
+   (local DB → plain .md files on disk)
+3. **Push cycle** (bidirectional only) — `mirror` (detect filesystem changes →
+   local DB) then `sync` (local DB → CouchDB)
+4. **Loop** — repeats every `SYNC_INTERVAL` seconds
+
+The container is stateless beyond the bind-mounted directory. If you delete
+the container, the local files remain. Restarting picks up where it left off
+(the `.livesync/` subdirectory inside the mount stores the bootstrap config
+and local DB).
 
 ## Kubernetes Deployment
 
 Raw manifests in `chart/` target an EKS sandbox cluster:
 
 - **CouchDB** — StatefulSet with EBS (gp3) persistent volume
-- **Sync** — Deployment writing to EFS-backed shared volume
-- **Viewer** — Deployment + LoadBalancer Service reading from EFS
-- **Agent** — Job template mounting EFS
+- **Portal** — Deployment with EFS-backed vaults + static volumes, OIDC auth
+- **Sync** — Deployment writing to EFS (multi-vault, registry-driven)
+- **Agent** — Job template with VAULT_NAME targeting
+- **Ingress** — Single ALB with dual listeners: HTTPS/443 (portal, OIDC via
+  Okta) + HTTPS/5984 (CouchDB, no OIDC)
 
 ```bash
 kubectl apply -k chart/
 ```
 
 See `chart/` for details. Assumes EBS CSI and EFS CSI drivers are installed.
+The ingress requires an ACM certificate and Okta OIDC app registration
+(see `chart/ingress.yaml` for placeholder values to replace).
 
-## Implementation Order
+### OIDC testing without Okta
 
-1. **CouchDB** — get LiveSync hub running, verify Obsidian desktop can connect
-2. **Sync + Viewer** — vault sync sidecar + web UI reading from shared volume
-3. **Agent** — livesync-cli + Claude Code one-shot worker
-4. **K8s** — deploy to sandbox EKS cluster
+For staging or dev clusters, set `JWT_SKIP_VERIFY=1` in the portal configmap
+and use `scripts/fake-jwt.py` to generate test tokens:
+
+```bash
+TOKEN=$(python scripts/fake-jwt.py --email test@co.com --groups livesync-admin | head -2 | tail -1)
+curl -H "x-amzn-oidc-data: $TOKEN" https://portal-staging.example.com/api/vaults
+```
 
 See [TODO.md](TODO.md) for the detailed implementation checklist.
