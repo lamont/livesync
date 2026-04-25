@@ -42,7 +42,7 @@ async def create_vault(body: VaultCreate, request: Request):
     try:
         return await svc.create_vault(
             owner_email=user.email,
-            name=body.name,
+            suffix=body.name,
             encrypted_only=body.encrypted_only,
         )
     except ValueError as exc:

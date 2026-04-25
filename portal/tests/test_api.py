@@ -46,20 +46,23 @@ def user_headers():
 def test_create_vault(api_client, admin_headers):
     client, svc = api_client
     svc.create_vault.return_value = VaultInfo(
-        name="new-vault", owner="admin@co.com", members=["admin@co.com"]
+        name="obsidian_admin_notes", owner="admin@co.com", members=["admin@co.com"]
     )
 
     r = client.post(
         "/api/vaults",
-        json={"name": "new-vault"},
+        json={"name": "notes"},
         headers=admin_headers,
     )
 
     assert r.status_code == 201
     body = r.json()
-    assert body["name"] == "new-vault"
+    assert body["name"] == "obsidian_admin_notes"
     assert body["owner"] == "admin@co.com"
     svc.create_vault.assert_called_once()
+    # Verify suffix is passed (not a pre-assembled full name)
+    call_kwargs = svc.create_vault.call_args.kwargs
+    assert call_kwargs["suffix"] == "notes"
 
 
 def test_create_vault_encrypted_only(api_client, admin_headers):

@@ -6,9 +6,39 @@ import secrets
 from .couch import CouchClient
 from .models import VaultInfo
 
-# CouchDB requires lowercase database names starting with a letter,
-# containing only [a-z0-9_-].
-_VALID_VAULT_NAME = re.compile(r"^[a-z][a-z0-9_-]*$")
+# Vault suffix validation: the user-supplied part of the database name.
+# Must start with a lowercase letter, followed by lowercase letters,
+# digits, or underscores.  Hyphens are disallowed because the Obsidian
+# LiveSync plugin cannot sync databases whose names contain them.
+_VALID_VAULT_SUFFIX = re.compile(r"^[a-z][a-z0-9_]*$")
+
+
+def normalize_username(email: str) -> str:
+    """Extract and normalize the local part of an email for use in DB names.
+
+    Rules: take everything before ``@``, lowercase it, and replace any
+    character that isn't ``[a-z0-9]`` with ``_``.  Collapses consecutive
+    underscores and strips leading/trailing ones.
+
+    >>> normalize_username("admin@localhost")
+    'admin'
+    >>> normalize_username("John.Doe@Company.com")
+    'john_doe'
+    >>> normalize_username("jane+test@company.com")
+    'jane_test'
+    """
+    local = email.split("@", 1)[0].lower()
+    normalized = re.sub(r"[^a-z0-9]", "_", local)
+    normalized = re.sub(r"_+", "_", normalized).strip("_")
+    return normalized
+
+
+def make_vault_db_name(owner_email: str, suffix: str) -> str:
+    """Build the full CouchDB database name for a vault.
+
+    Format: ``obsidian_<normalized_username>_<suffix>``
+    """
+    return f"obsidian_{normalize_username(owner_email)}_{suffix}"
 
 # Admin CouchDB user that gets added to every vault's _security
 ADMIN_USER = "admin"
@@ -113,20 +143,26 @@ class VaultService:
     # ── Vault CRUD ──────────────────────────────────────────────────────────
 
     async def create_vault(
-        self, owner_email: str, name: str, *, encrypted_only: bool = False
+        self, owner_email: str, suffix: str, *, encrypted_only: bool = False
     ) -> VaultInfo:
-        """Create a new vault: CouchDB database + security + registry + passphrase."""
-        # 0a. Validate name (CouchDB requires lowercase)
-        if not _VALID_VAULT_NAME.match(name):
+        """Create a new vault: CouchDB database + security + registry + passphrase.
+
+        *suffix* is the user-supplied part of the vault name.  The full
+        CouchDB database name is built as ``obsidian_<username>_<suffix>``.
+        """
+        # 0a. Validate suffix
+        if not _VALID_VAULT_SUFFIX.match(suffix):
             raise ValueError(
-                f"Invalid vault name '{name}': must start with a lowercase letter "
-                "and contain only lowercase letters, numbers, hyphens, and underscores"
+                f"Invalid vault name '{suffix}': must start with a lowercase letter "
+                "and contain only lowercase letters, numbers, and underscores"
             )
+
+        name = make_vault_db_name(owner_email, suffix)
 
         # 0b. Check for duplicate name
         existing = await self.couch.get_registry()
         if any(d.get("name") == name for d in existing):
-            raise ValueError(f"Vault '{name}' already exists")
+            raise ValueError(f"Vault '{suffix}' already exists")
 
         # 1. Create the CouchDB database
         await self.couch.create_database(name)

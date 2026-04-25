@@ -9,7 +9,7 @@ import pytest
 
 from app.couch import CouchClient
 from app.models import VaultInfo
-from app.vault_service import VaultService
+from app.vault_service import VaultService, make_vault_db_name, normalize_username
 
 
 @pytest.fixture
@@ -22,6 +22,38 @@ def mock_couch():
 @pytest.fixture
 def service(mock_couch):
     return VaultService(mock_couch)
+
+
+# ── normalize_username ──────────────────────────────────────────────────────
+
+def test_normalize_simple_email():
+    assert normalize_username("admin@localhost") == "admin"
+
+
+def test_normalize_dotted_email():
+    assert normalize_username("john.doe@company.com") == "john_doe"
+
+
+def test_normalize_plus_email():
+    assert normalize_username("jane+test@company.com") == "jane_test"
+
+
+def test_normalize_uppercase_email():
+    assert normalize_username("Admin@Localhost") == "admin"
+
+
+def test_normalize_consecutive_special_chars():
+    assert normalize_username("a..b@x.com") == "a_b"
+
+
+# ── make_vault_db_name ──────────────────────────────────────────────────────
+
+def test_make_vault_db_name():
+    assert make_vault_db_name("admin@localhost", "wiki") == "obsidian_admin_wiki"
+
+
+def test_make_vault_db_name_dotted():
+    assert make_vault_db_name("john.doe@co.com", "notes") == "obsidian_john_doe_notes"
 
 
 # ── provision_user ───────────────────────────────────────────────────────────
@@ -45,15 +77,15 @@ async def test_create_vault_orchestrates_all_steps(service, mock_couch):
     mock_couch.get_registry.return_value = []
     mock_couch.ensure_user.return_value = "pw123"
 
-    vault = await service.create_vault("alice@co.com", "my-vault")
+    vault = await service.create_vault("alice@co.com", "myvault")
 
     assert isinstance(vault, VaultInfo)
-    assert vault.name == "my-vault"
+    assert vault.name == "obsidian_alice_myvault"
     assert vault.owner == "alice@co.com"
     assert "alice@co.com" in vault.members
 
     # Verify all CouchDB operations were called
-    mock_couch.create_database.assert_called_once_with("my-vault")
+    mock_couch.create_database.assert_called_once_with("obsidian_alice_myvault")
     mock_couch.set_security.assert_called_once()
     mock_couch.store_passphrase.assert_called_once()
     mock_couch.put_registry_doc.assert_called_once()
@@ -64,7 +96,7 @@ async def test_create_vault_orchestrates_all_steps(service, mock_couch):
 
     # Check passphrase was stored (we don't care what it is, just that it's non-empty)
     pp_call = mock_couch.store_passphrase.call_args
-    assert pp_call.args[0] == "my-vault"  # vault name
+    assert pp_call.args[0] == "obsidian_alice_myvault"  # vault name
     assert len(pp_call.args[1]) > 0  # passphrase is non-empty
 
 
@@ -72,15 +104,24 @@ async def test_create_vault_orchestrates_all_steps(service, mock_couch):
 async def test_create_vault_rejects_duplicate_name(service, mock_couch):
     """Creating a vault with an existing name should raise."""
     mock_couch.get_registry.return_value = [
-        {"name": "taken", "owner": "bob@co.com", "members": ["bob@co.com"],
+        {"name": "obsidian_bob_taken", "owner": "bob@co.com", "members": ["bob@co.com"],
          "groups": [], "encrypted_only": False},
     ]
 
     with pytest.raises(ValueError, match="already exists"):
-        await service.create_vault("alice@co.com", "taken")
+        await service.create_vault("bob@co.com", "taken")
 
     # Should NOT have created the database
     mock_couch.create_database.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_create_vault_rejects_invalid_suffix(service, mock_couch):
+    """Suffix with invalid characters should raise."""
+    mock_couch.get_registry.return_value = []
+
+    with pytest.raises(ValueError, match="Invalid vault name"):
+        await service.create_vault("alice@co.com", "BAD-NAME")
 
 
 @pytest.mark.asyncio
@@ -104,12 +145,12 @@ async def test_create_vault_generates_passphrase(service, mock_couch):
     mock_couch.get_registry.return_value = []
     mock_couch.ensure_user.return_value = "pw"
 
-    await service.create_vault("a@co.com", "vault-1")
+    await service.create_vault("a@co.com", "vault1")
     pp1 = mock_couch.store_passphrase.call_args.args[1]
 
     mock_couch.reset_mock()
     mock_couch.get_registry.return_value = []
-    await service.create_vault("a@co.com", "vault-2")
+    await service.create_vault("a@co.com", "vault2")
     pp2 = mock_couch.store_passphrase.call_args.args[1]
 
     # Passphrases should be different (astronomically unlikely to collide)
@@ -121,9 +162,9 @@ async def test_create_vault_generates_passphrase(service, mock_couch):
 @pytest.mark.asyncio
 async def test_list_vaults_for_user(service, mock_couch):
     mock_couch.get_user_vaults.return_value = [
-        {"name": "v1", "owner": "alice@co.com", "members": ["alice@co.com"],
+        {"name": "obsidian_alice_v1", "owner": "alice@co.com", "members": ["alice@co.com"],
          "groups": [], "encrypted_only": False},
-        {"name": "v2", "owner": "bob@co.com", "members": ["bob@co.com", "alice@co.com"],
+        {"name": "obsidian_bob_v2", "owner": "bob@co.com", "members": ["bob@co.com", "alice@co.com"],
          "groups": [], "encrypted_only": False},
     ]
 
@@ -131,7 +172,7 @@ async def test_list_vaults_for_user(service, mock_couch):
 
     assert len(vaults) == 2
     assert all(isinstance(v, VaultInfo) for v in vaults)
-    assert vaults[0].name == "v1"
+    assert vaults[0].name == "obsidian_alice_v1"
     mock_couch.get_user_vaults.assert_called_once_with("alice@co.com", ["eng"])
 
 
@@ -148,15 +189,16 @@ async def test_list_vaults_empty(service, mock_couch):
 @pytest.mark.asyncio
 async def test_get_vault_exists(service, mock_couch):
     mock_couch.get_registry_doc.return_value = {
-        "_id": "vault:team-wiki",
-        "name": "team-wiki", "owner": "alice@co.com", "members": ["alice@co.com"],
+        "_id": "vault:obsidian_alice_wiki",
+        "name": "obsidian_alice_wiki", "owner": "alice@co.com",
+        "members": ["alice@co.com"],
         "groups": [], "encrypted_only": False,
     }
 
-    vault = await service.get_vault("team-wiki")
+    vault = await service.get_vault("obsidian_alice_wiki")
     assert vault is not None
-    assert vault.name == "team-wiki"
-    mock_couch.get_registry_doc.assert_called_once_with("team-wiki")
+    assert vault.name == "obsidian_alice_wiki"
+    mock_couch.get_registry_doc.assert_called_once_with("obsidian_alice_wiki")
 
 
 @pytest.mark.asyncio
@@ -182,11 +224,11 @@ async def test_get_setup_uri_returns_obsidian_uri(service, mock_couch):
             "uri_passphrase": "autumn-river",
         }
 
-        result = await service.get_setup_uri("team-wiki", "alice@co.com")
+        result = await service.get_setup_uri("obsidian_alice_wiki", "alice@co.com")
 
         assert result["setup_uri"].startswith("obsidian://setuplivesync?")
         assert result["uri_passphrase"] == "autumn-river"
-        mock_couch.get_passphrase.assert_called_with("team-wiki")
+        mock_couch.get_passphrase.assert_called_with("obsidian_alice_wiki")
         mock_couch.ensure_user.assert_called_with("alice@co.com", reset_password=True)
 
 
@@ -196,13 +238,13 @@ async def test_get_setup_uri_returns_obsidian_uri(service, mock_couch):
 async def test_update_vault_encrypted_only(service, mock_couch):
     """update_vault should toggle encrypted_only and write registry doc."""
     mock_couch.get_registry_doc.return_value = {
-        "_id": "vault:my-vault",
-        "name": "my-vault", "owner": "alice@co.com",
+        "_id": "vault:obsidian_alice_wiki",
+        "name": "obsidian_alice_wiki", "owner": "alice@co.com",
         "members": ["alice@co.com"], "groups": [],
         "encrypted_only": False,
     }
 
-    vault = await service.update_vault("my-vault", encrypted_only=True)
+    vault = await service.update_vault("obsidian_alice_wiki", encrypted_only=True)
 
     assert vault.encrypted_only is True
     doc = mock_couch.put_registry_doc.call_args.args[0]
