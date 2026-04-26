@@ -10,3 +10,8 @@ data:
   # (used in Setup URIs so Obsidian desktop can reach CouchDB).
   COUCHDB_EXTERNAL_URI: https://livesync.example.com:5984
   SYNC_INTERVAL: "60"
+  AUTH_MODE: oidc
+  # Okta end-session endpoint — update YOUR_OKTA_ORG to match ingress.yaml
+  OIDC_LOGOUT_URL: https://YOUR_OKTA_ORG.okta.com/oauth2/default/v1/logout
+  # Portal public URL — Okta redirects here after logout
+  OIDC_POST_LOGOUT_REDIRECT: https://livesync.example.com/

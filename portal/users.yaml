@@ -6,3 +6,7 @@
 - email: user@localhost
   password: user
   groups: [eng]
+- email: lamont@localhost
+  password: lamont
+  groups: [eng]
+

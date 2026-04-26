@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from starlette.responses import Response
 
-from .auth import AuthMiddleware
+from .auth import AuthMiddleware, logout_response
 from .couch import CouchClient
 from .metrics import (
     HTTP_DURATION,
@@ -52,6 +52,11 @@ app.include_router(welcome.router)
 app.include_router(admin.router)
 app.include_router(api.router)
 app.include_router(vaults.router)
+
+
+@app.get("/logout", include_in_schema=False)
+async def logout():
+    return logout_response()
 
 
 @app.get("/metrics", include_in_schema=False)

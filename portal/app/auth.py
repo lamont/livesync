@@ -47,7 +47,7 @@ JWT_ALGORITHMS = ["HS256", "RS256", "ES256"]
 USERS_FILE = os.environ.get("USERS_FILE", "/app/users.yaml")
 
 # Paths that never require authentication.
-PUBLIC_PATHS = {"/healthz", "/metrics"}
+PUBLIC_PATHS = {"/healthz", "/metrics", "/logout"}
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -116,6 +116,72 @@ def _basic_auth_challenge() -> Response:
         content="Unauthorized",
         headers={"WWW-Authenticate": 'Basic realm="LiveSync Portal"'},
     )
+
+
+_LOCAL_LOGOUT_HTML = """\
+<!DOCTYPE html>
+<html>
+<head><title>Logged out</title></head>
+<body>
+<p>Logging out&hellip;</p>
+<script>
+// Send a request with bogus credentials to overwrite the browser's
+// cached Basic Auth, then redirect to / which will show a fresh login.
+var x = new XMLHttpRequest();
+x.open("GET", "/", true, "logout", "logout");
+x.onloadend = function() { window.location = "/"; };
+x.send();
+</script>
+<noscript><p>Logged out. <a href="/">Log in again</a></p></noscript>
+</body>
+</html>"""
+
+# ── OIDC logout settings ────────────────────────────────────────────────────
+# Okta end-session endpoint.  Set via env so the portal doesn't hard-code an
+# Okta org URL.  Format: https://YOUR_ORG.okta.com/oauth2/default/v1/logout
+OIDC_LOGOUT_URL = os.environ.get("OIDC_LOGOUT_URL", "")
+# Where Okta redirects after logout — should be the portal's public origin.
+OIDC_POST_LOGOUT_REDIRECT = os.environ.get("OIDC_POST_LOGOUT_REDIRECT", "/")
+# ALB session cookie name — must match the ingress annotation.
+ALB_SESSION_COOKIE = os.environ.get("ALB_SESSION_COOKIE", "AWSELBAuthSessionCookie")
+
+
+def logout_response() -> Response:
+    """Mode-aware logout.
+
+    **local**: serves a page that overwrites the browser's cached Basic Auth
+    credentials via XHR with dummy creds, then redirects to ``/``.
+
+    **oidc**: deletes the ALB session cookie(s) and redirects to Okta's
+    end-session endpoint, which in turn redirects back to the portal.
+    """
+    if AUTH_MODE == "local":
+        return Response(
+            status_code=200,
+            content=_LOCAL_LOGOUT_HTML,
+            media_type="text/html",
+        )
+
+    # OIDC mode — clear ALB session cookies and redirect to Okta logout.
+    # ALB may set numbered cookies (AWSELBAuthSessionCookie-0, -1, …) for
+    # large tokens, so we expire the base name and the first few numbered ones.
+    redirect_url = OIDC_LOGOUT_URL or "/"
+    if OIDC_LOGOUT_URL and OIDC_POST_LOGOUT_REDIRECT:
+        redirect_url = (
+            f"{OIDC_LOGOUT_URL}"
+            f"?post_logout_redirect_uri={OIDC_POST_LOGOUT_REDIRECT}"
+        )
+
+    response = Response(
+        status_code=302,
+        headers={"Location": redirect_url},
+    )
+    for suffix in ("", "-0", "-1", "-2", "-3"):
+        response.delete_cookie(
+            f"{ALB_SESSION_COOKIE}{suffix}",
+            path="/",
+        )
+    return response
 
 
 # ── Middleware ───────────────────────────────────────────────────────────────
