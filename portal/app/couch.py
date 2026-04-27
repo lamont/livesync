@@ -31,10 +31,13 @@ class CouchClient:
     async def ensure_user(self, email: str, *, reset_password: bool = False) -> str:
         """Ensure a CouchDB user exists for *email*.  Returns the password.
 
-        By default, if the user already exists the stored password is returned
-        from the ``livesync-passwords`` database (created on first call).  Pass
-        ``reset_password=True`` to force a new password — use this only when
-        generating a Setup URI so the URI contains a known-good credential.
+        On the first call for a given email a new CouchDB user and random
+        password are created.  Subsequent calls return the stored password
+        from the ``livesync-passwords`` database without rotating it, so
+        existing vault connections are never invalidated.
+
+        Pass ``reset_password=True`` only for administrative resets — it
+        will invalidate every Setup URI the user has previously applied.
         """
         pwd_doc_id = f"pwd:{email}"
 

@@ -271,7 +271,7 @@ class VaultService:
         Returns ``{"setup_uri": "obsidian://...", "uri_passphrase": "word-word"}``.
         """
         passphrase = await self.couch.get_passphrase(vault_name)
-        password = await self.couch.ensure_user(email, reset_password=True)
+        password = await self.couch.ensure_user(email)
         return await generate_setup_uri(
             couch_url=self.external_couch_url,
             username=email,
