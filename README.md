@@ -2,8 +2,8 @@
 
 A docker-compose development environment that runs a self-hosted Obsidian vault
 as a shared LLM wiki. CouchDB acts as the durable sync hub (via the LiveSync
-protocol), a static site viewer provides the web UI, and a one-shot agent
-container runs Claude Code to perform wiki operations.
+protocol), the portal renders vaults as static wikis (Quartz v5), and a
+one-shot agent container runs Claude Code to perform wiki operations.
 
 ## Architecture
 
@@ -19,10 +19,10 @@ container runs Claude Code to perform wiki operations.
 │         │  LiveSync replication                               │
 │         │                                                    │
 │  ┌──────┴───────┐         ┌──────────────┐                   │
-│  │   agent       │────────►│   viewer      │                  │
+│  │   agent       │────────►│   portal      │                  │
 │  │              │ shared  │              │                   │
-│  │  livesync-cli│ volume  │  Quartz v4    │                  │
-│  │  claude code │ (r/w)   │  :8080        │                  │
+│  │  livesync-cli│ volume  │  Quartz v5    │                  │
+│  │  claude code │ (r/w)   │  :8000        │                  │
 │  │              │         │              │                   │
 │  └──────────────┘         └──────────────┘                   │
 │         │                        │                           │
@@ -49,8 +49,8 @@ External:
 4. **Agent** uses `livesync-cli` to pull the vault from CouchDB into its own
    volume (`agent-vault`), runs Claude Code against it, then pushes changes
    back to CouchDB.
-5. **Viewer** mounts `vault` read-only and rebuilds the static site (Quartz v4)
-   when files change.
+5. **Portal** mounts the vaults volume read-only and rebuilds per-vault static
+   sites (Quartz v5) when files change, serving them at `/vaults/<name>/`.
 
 ## Services
 
@@ -74,15 +74,13 @@ Periodically pulls vault state from CouchDB to the shared filesystem volume.
 - Volume: `vault` at `/data` (read-write)
 - Sync interval: configurable (default 60s)
 
-### viewer — Wiki Web UI
+### Wiki rendering (inside portal)
 
-**Image:** Custom Dockerfile (Quartz v4 + Node 22)
-
-Watches the vault directory for changes and rebuilds the static site. Serves
-via the Quartz dev server.
-
-- Port: `8080`
-- Volume: `vault` mounted read-only at `/vault`
+Quartz v5 is embedded in the portal image (pinned release + vendored
+`quartz.config.yaml` / `quartz.lock.json` under `portal/quartz-template/`).
+A background task watches vault directories and rebuilds each vault's static
+site on change; the portal serves the output at `/vaults/<name>/` with access
+control. The standalone `viewer` container was removed in favor of this.
 
 ### agent — Claude Code Wiki Worker
 
@@ -156,10 +154,11 @@ docker compose run --rm couchdb-init
    pushes your (empty) local state to the server and establishes the sync
    relationship. Future devices joining the same vault use option 2.
 
-6. **Start sync + viewer** (optional — renders vault content as a web wiki):
+6. **Start sync** (optional — renders vault content as a web wiki via the
+   portal):
    ```bash
-   docker compose up -d sync viewer
-   # Browse at http://localhost:8080
+   docker compose up -d sync-multi portal
+   # Browse at http://localhost:8000/vaults/<name>/
    ```
 
 #### Multiple vaults

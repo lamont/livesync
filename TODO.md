@@ -186,8 +186,9 @@
 
 1. **livesync-cli maturity** — Experimental (March 2026). May need fallback to
    headless Obsidian if CLI proves unreliable.
-2. **Quartz + Obsidian wikilinks** — Need `markdownLinkResolution` config for
-   `[[wikilink]]` compatibility.
+2. ~~**Quartz + Obsidian wikilinks**~~ — Resolved by the Quartz v5 upgrade:
+   `portal/quartz-template/quartz.config.yaml` sets
+   `markdownLinkResolution: shortest` on the crawl-links plugin.
 3. **Write serialization** — Single agent at a time for now. Production
    multi-agent needs a queue or conflict resolution strategy.
 4. **CouchDB `couch_peruser`** — Auto-creates per-user databases. Could simplify
