@@ -85,12 +85,6 @@
       "commit": "def459f31b02fdebdc22579cbeec2907829ff20f",
       "installedAt": "2026-03-12T19:33:30.998Z"
     },
-    "favicon": {
-      "source": "github:quartz-community/favicon",
-      "resolved": "https://github.com/quartz-community/favicon.git",
-      "commit": "c389697fee691553920d44bab16ee06e79d2e080",
-      "installedAt": "2026-03-11T18:22:44.822Z"
-    },
     "folder-page": {
       "source": "github:quartz-community/folder-page",
       "resolved": "https://github.com/quartz-community/folder-page.git",

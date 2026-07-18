@@ -23,6 +23,21 @@ RUN cp quartz.config.template.yaml quartz.config.yaml \
     && for d in .quartz/plugins/*/; do (cd "$d" && npm prune --omit=dev); done \
     && rm -rf /root/.npm
 
+# Strip what builds never load at runtime. Verified against a fixture build:
+# - core .git/docs and the root TS toolchain (esbuild itself must stay — the
+#   CLI bundles quartz's own source with it on every build)
+# - typst/mathjax at the root (we render math with katex); the latex PLUGIN's
+#   node_modules must keep all engines — its dist imports them statically and
+#   silently stops rendering math if they're missing
+# - per-plugin build toolchains (plugins ship prebuilt dist/)
+RUN rm -rf .git docs \
+        node_modules/typescript node_modules/tsx node_modules/prettier \
+        node_modules/@types node_modules/mathjax-full node_modules/@myriaddreamin \
+    && for d in .quartz/plugins/*/node_modules; do \
+        rm -rf "$d/typescript" "$d/@esbuild" "$d/esbuild" "$d/rollup" "$d/@rollup" \
+               "$d/sucrase" "$d/tsup" "$d/vitest" "$d/@vitest" "$d/prettier" "$d/@types"; \
+    done
+
 # Every plugin vendors its own node_modules (~30 copies of the same
 # toolchain); hardlinking identical files reclaims ~1.7GB in the final image.
 COPY scripts/dedupe_hardlink.py /tmp/dedupe_hardlink.py

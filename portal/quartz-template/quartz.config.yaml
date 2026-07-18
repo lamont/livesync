@@ -103,8 +103,8 @@ plugins:
     options:
       enableSiteMap: false
       enableRSS: false
-  - source: github:quartz-community/favicon
-    enabled: true
+  # favicon plugin intentionally omitted: it vendors its own sharp/libvips
+  # (~50MB) to generate per-site icons nobody sees behind the portal.
   # og-image must stay installed even though disabled: quartz core's Head.tsx
   # unconditionally imports CustomOgImagesEmitterName from the plugin index
   # (v5.0.0), so removing it breaks every build.
