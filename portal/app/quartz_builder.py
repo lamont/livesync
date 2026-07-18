@@ -8,7 +8,6 @@ Encrypted-only vaults (per the CouchDB registry) are skipped.
 import asyncio
 import logging
 import os
-import re
 import time
 from pathlib import Path
 
@@ -81,17 +80,12 @@ class QuartzBuilder:
                 self._mtimes[name] = mtime
 
     def _patch_quartz_config(self, vault_name: str) -> None:
-        """Set pageTitle in quartz.config.ts to the vault name before building."""
-        config_path = Path(QUARTZ_DIR) / "quartz.config.ts"
-        if not config_path.exists():
+        """Write quartz.config.yaml from the template with pageTitle set to the vault name."""
+        template_path = Path(QUARTZ_DIR) / "quartz.config.template.yaml"
+        if not template_path.exists():
             return
-        config = config_path.read_text()
-        config = re.sub(
-            r'(pageTitle:\s*)"[^"]*"',
-            rf'\1"{vault_name}"',
-            config,
-        )
-        config_path.write_text(config)
+        config = template_path.read_text().replace("__VAULT_NAME__", vault_name)
+        (Path(QUARTZ_DIR) / "quartz.config.yaml").write_text(config)
 
     async def _build_vault(self, name: str) -> bool:
         """Run npx quartz build for a single vault. Returns True on success."""
