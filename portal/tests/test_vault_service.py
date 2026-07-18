@@ -229,7 +229,7 @@ async def test_get_setup_uri_returns_obsidian_uri(service, mock_couch):
         assert result["setup_uri"].startswith("obsidian://setuplivesync?")
         assert result["uri_passphrase"] == "autumn-river"
         mock_couch.get_passphrase.assert_called_with("obsidian_alice_wiki")
-        mock_couch.ensure_user.assert_called_with("alice@co.com", reset_password=True)
+        mock_couch.ensure_user.assert_called_with("alice@co.com")
 
 
 # ── update_vault ────────────────────────────────────────────────────────
