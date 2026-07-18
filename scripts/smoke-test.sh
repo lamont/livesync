@@ -74,6 +74,12 @@ else
     fail "Portal returned $HTTP_CODE without auth header (expected 401)"
 fi
 
+# Create databases (registry + passphrases) before any authenticated portal
+# request — on a fresh CouchDB, / queries the registry and 500s without them,
+# which aborts the whole script under set -e.
+echo "==> Running couchdb-init..."
+$COMPOSE run --rm couchdb-init 2>/dev/null
+
 # Generate a fake JWT using our script
 TOKEN=$(python3 "$SCRIPT_DIR/fake-jwt.py" --email test@example.com --groups eng,livesync-admin 2>/dev/null | head -2 | tail -1)
 
@@ -83,34 +89,32 @@ else
     fail "fake-jwt.py did not produce a token"
 fi
 
-# Test: valid JWT → 200 with correct user
+# Test: valid JWT is accepted. / renders the dashboard (200) or redirects
+# first-login users to /welcome (302) — either proves the JWT was honored.
 if [ -n "$TOKEN" ]; then
-    RESPONSE=$(curl -s -H "x-amzn-oidc-data: $TOKEN" http://localhost:8000/)
-    EMAIL=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('user',''))" 2>/dev/null)
-    IS_ADMIN=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('is_admin',''))" 2>/dev/null)
-
-    if [ "$EMAIL" = "test@example.com" ]; then
-        pass "Portal returns correct email from JWT"
+    HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "x-amzn-oidc-data: $TOKEN" http://localhost:8000/api/vaults)
+    if [ "$HTTP_CODE" = "200" ]; then
+        pass "Portal accepts valid JWT (api/vaults 200)"
     else
-        fail "Portal returned email='$EMAIL' (expected test@example.com)"
+        fail "Portal returned $HTTP_CODE for valid JWT (expected 200)"
     fi
 
-    if [ "$IS_ADMIN" = "True" ]; then
-        pass "Portal detects livesync-admin group"
+    HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "x-amzn-oidc-data: $TOKEN" http://localhost:8000/admin/)
+    if [ "$HTTP_CODE" = "200" ]; then
+        pass "Portal detects livesync-admin group (admin page 200)"
     else
-        fail "Portal returned is_admin='$IS_ADMIN' (expected True)"
+        fail "Admin page returned $HTTP_CODE for livesync-admin JWT (expected 200)"
     fi
 fi
 
 # Test: non-admin user
 TOKEN_USER=$(python3 "$SCRIPT_DIR/fake-jwt.py" --email regular@example.com --groups eng 2>/dev/null | head -2 | tail -1)
 if [ -n "$TOKEN_USER" ]; then
-    IS_ADMIN_USER=$(curl -s -H "x-amzn-oidc-data: $TOKEN_USER" http://localhost:8000/ | \
-        python3 -c "import sys,json; print(json.load(sys.stdin).get('is_admin',''))" 2>/dev/null)
-    if [ "$IS_ADMIN_USER" = "False" ]; then
-        pass "Non-admin user detected correctly"
+    HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "x-amzn-oidc-data: $TOKEN_USER" http://localhost:8000/admin/)
+    if [ "$HTTP_CODE" = "403" ]; then
+        pass "Non-admin user denied admin page (403)"
     else
-        fail "Non-admin user returned is_admin='$IS_ADMIN_USER' (expected False)"
+        fail "Admin page returned $HTTP_CODE for non-admin JWT (expected 403)"
     fi
 fi
 
@@ -126,22 +130,26 @@ fi
 # The portal defaults to AUTH_MODE=local in docker-compose with users.yaml mounted.
 
 # Test: valid local admin via HTTP Basic Auth
-RESPONSE=$(curl -s -u "admin@localhost:admin" http://localhost:8000/)
-EMAIL=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('user',''))" 2>/dev/null)
-IS_ADMIN=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('is_admin',''))" 2>/dev/null)
-if [ "$EMAIL" = "admin@localhost" ] && [ "$IS_ADMIN" = "True" ]; then
+HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -u "admin@localhost:admin" http://localhost:8000/api/vaults)
+if [ "$HTTP_CODE" = "200" ]; then
     pass "Local auth: admin login via HTTP Basic"
 else
-    fail "Local auth: admin got email='$EMAIL' is_admin='$IS_ADMIN'"
+    fail "Local auth: api/vaults returned $HTTP_CODE for admin (expected 200)"
+fi
+
+HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -u "admin@localhost:admin" http://localhost:8000/admin/)
+if [ "$HTTP_CODE" = "200" ]; then
+    pass "Local auth: admin can access admin page"
+else
+    fail "Local auth: admin page returned $HTTP_CODE for admin (expected 200)"
 fi
 
 # Test: valid local regular user
-RESPONSE=$(curl -s -u "user@localhost:user" http://localhost:8000/)
-IS_ADMIN_LOCAL=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('is_admin',''))" 2>/dev/null)
-if [ "$IS_ADMIN_LOCAL" = "False" ]; then
-    pass "Local auth: regular user not admin"
+HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -u "user@localhost:user" http://localhost:8000/admin/)
+if [ "$HTTP_CODE" = "403" ]; then
+    pass "Local auth: regular user not admin (403 on admin page)"
 else
-    fail "Local auth: regular user got is_admin='$IS_ADMIN_LOCAL'"
+    fail "Local auth: admin page returned $HTTP_CODE for regular user (expected 403)"
 fi
 
 # Test: wrong password → 401
@@ -153,9 +161,6 @@ else
 fi
 
 # ── CouchDB init check ──────────────────────────────────────────────────────
-# Run couchdb-init to create databases (including registry + passphrases)
-$COMPOSE run --rm couchdb-init 2>/dev/null
-
 COUCH_URL="http://${COUCHDB_USER:-admin}:${COUCHDB_PASSWORD:-livesync-dev-2026}@localhost:5984"
 for db in _users _replicator obsidian-wiki livesync-registry livesync-passphrases livesync-passwords; do
     HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$COUCH_URL/$db")
@@ -170,25 +175,25 @@ done
 # Create a vault via the API
 RESPONSE=$(curl -s -u "admin@localhost:admin" -X POST \
     -H "Content-Type: application/json" \
-    -d '{"name":"test-vault"}' \
+    -d '{"name":"smoketest"}' \
     http://localhost:8000/api/vaults)
 VAULT_NAME=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('name',''))" 2>/dev/null)
-if [ "$VAULT_NAME" = "test-vault" ]; then
-    pass "Vault API: created vault 'test-vault'"
+if [ "$VAULT_NAME" = "obsidian_admin_smoketest" ]; then
+    pass "Vault API: created vault 'obsidian_admin_smoketest'"
 else
-    fail "Vault API: create returned name='$VAULT_NAME' (expected test-vault). Response: $RESPONSE"
+    fail "Vault API: create returned name='$VAULT_NAME' (expected obsidian_admin_smoketest). Response: $RESPONSE"
 fi
 
 # Verify the CouchDB database was created
-HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$COUCH_URL/test-vault")
+HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$COUCH_URL/obsidian_admin_smoketest")
 if [ "$HTTP_CODE" = "200" ]; then
-    pass "Vault API: CouchDB database 'test-vault' exists"
+    pass "Vault API: CouchDB database 'obsidian_admin_smoketest' exists"
 else
-    fail "Vault API: CouchDB database 'test-vault' returned $HTTP_CODE"
+    fail "Vault API: CouchDB database 'obsidian_admin_smoketest' returned $HTTP_CODE"
 fi
 
 # Verify _security was set on the vault
-SECURITY=$(curl -s "$COUCH_URL/test-vault/_security")
+SECURITY=$(curl -s "$COUCH_URL/obsidian_admin_smoketest/_security")
 SEC_ADMIN=$(echo "$SECURITY" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('admins',{}).get('names',[]))" 2>/dev/null)
 if echo "$SEC_ADMIN" | grep -q "admin@localhost"; then
     pass "Vault API: _security has owner as admin"
@@ -206,7 +211,7 @@ else
 fi
 
 # Get vault detail
-RESPONSE=$(curl -s -u "admin@localhost:admin" http://localhost:8000/api/vaults/test-vault)
+RESPONSE=$(curl -s -u "admin@localhost:admin" http://localhost:8000/api/vaults/obsidian_admin_smoketest)
 OWNER=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('owner',''))" 2>/dev/null)
 if [ "$OWNER" = "admin@localhost" ]; then
     pass "Vault API: detail shows correct owner"
@@ -215,7 +220,7 @@ else
 fi
 
 # Get setup URI
-RESPONSE=$(curl -s -u "admin@localhost:admin" http://localhost:8000/api/vaults/test-vault/setup-uri)
+RESPONSE=$(curl -s -u "admin@localhost:admin" http://localhost:8000/api/vaults/obsidian_admin_smoketest/setup-uri)
 SETUP_URI=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('setup_uri',''))" 2>/dev/null)
 if echo "$SETUP_URI" | grep -q "^obsidian://setuplivesync?"; then
     pass "Vault API: setup URI starts with obsidian://setuplivesync?"
@@ -232,16 +237,23 @@ else
 fi
 
 # ── Phase 8: Multi-vault sync ────────────────────────────────────────────────
-# The test-vault created above should be discovered by sync-multi and synced
-# to /data/vaults/test-vault/. Since the CouchDB database is empty (no Obsidian
+# The obsidian_admin_smoketest created above should be discovered by sync-multi and synced
+# to /data/vaults/obsidian_admin_smoketest/. Since the CouchDB database is empty (no Obsidian
 # client pushed content), we verify that sync-multi at least bootstraps the
 # vault directory and creates settings.
 
-echo "==> Building livesync-cli base image..."
-docker buildx build --platform linux/$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/') \
-    -f vendor/obsidian-livesync/src/apps/cli/Dockerfile \
-    -t livesync-cli:local --load \
-    vendor/obsidian-livesync 2>&1 | tail -3
+# Reuse an existing livesync-cli:local image unless missing or REBUILD_CLI=1.
+# (The from-scratch build currently fails on upstream npm drift in the
+# vendored obsidian-livesync submodule.)
+if [ "${REBUILD_CLI:-0}" = "1" ] || ! docker image inspect livesync-cli:local >/dev/null 2>&1; then
+    echo "==> Building livesync-cli base image..."
+    docker buildx build --platform linux/$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/') \
+        -f vendor/obsidian-livesync/src/apps/cli/Dockerfile \
+        -t livesync-cli:local --load \
+        vendor/obsidian-livesync 2>&1 | tail -3
+else
+    echo "==> Using existing livesync-cli:local image (REBUILD_CLI=1 to rebuild)"
+fi
 
 echo "==> Starting sync-multi..."
 $COMPOSE up -d --build sync-multi 2>/dev/null
@@ -251,7 +263,7 @@ echo -n "  Waiting for sync-multi bootstrap..."
 SYNC_OK=false
 for i in $(seq 1 20); do
     # Check if the vault directory was created inside the container
-    if $COMPOSE exec -T sync-multi test -f "/data/vaults/test-vault/.livesync/settings.json" 2>/dev/null; then
+    if $COMPOSE exec -T sync-multi test -f "/data/vaults/obsidian_admin_smoketest/.livesync/settings.json" 2>/dev/null; then
         SYNC_OK=true
         break
     fi
@@ -261,9 +273,9 @@ done
 echo
 
 if $SYNC_OK; then
-    pass "Multi-vault sync: bootstrapped test-vault settings"
+    pass "Multi-vault sync: bootstrapped obsidian_admin_smoketest settings"
 else
-    fail "Multi-vault sync: test-vault settings not found after 60s"
+    fail "Multi-vault sync: obsidian_admin_smoketest settings not found after 60s"
     # Show logs for debugging
     echo "  --- sync-multi logs ---"
     $COMPOSE logs --tail=20 sync-multi 2>/dev/null || true
@@ -271,8 +283,8 @@ else
 fi
 
 # Verify the vault directory exists
-if $COMPOSE exec -T sync-multi test -d "/data/vaults/test-vault" 2>/dev/null; then
-    pass "Multi-vault sync: vault directory exists at /data/vaults/test-vault"
+if $COMPOSE exec -T sync-multi test -d "/data/vaults/obsidian_admin_smoketest" 2>/dev/null; then
+    pass "Multi-vault sync: vault directory exists at /data/vaults/obsidian_admin_smoketest"
 else
     fail "Multi-vault sync: vault directory not found"
 fi
@@ -280,20 +292,20 @@ fi
 # Create a second vault and verify sync-multi picks it up on next cycle
 RESPONSE=$(curl -s -u "admin@localhost:admin" -X POST \
     -H "Content-Type: application/json" \
-    -d '{"name":"test-vault-2"}' \
+    -d '{"name":"smoketest2"}' \
     http://localhost:8000/api/vaults)
 VAULT2_NAME=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('name',''))" 2>/dev/null)
-if [ "$VAULT2_NAME" = "test-vault-2" ]; then
-    pass "Multi-vault sync: created second vault 'test-vault-2'"
+if [ "$VAULT2_NAME" = "obsidian_admin_smoketest2" ]; then
+    pass "Multi-vault sync: created second vault 'obsidian_admin_smoketest2'"
 else
     fail "Multi-vault sync: could not create second vault"
 fi
 
 # Wait for sync-multi to discover and bootstrap the second vault
-echo -n "  Waiting for sync-multi to discover test-vault-2..."
+echo -n "  Waiting for sync-multi to discover obsidian_admin_smoketest2..."
 SYNC2_OK=false
 for i in $(seq 1 25); do
-    if $COMPOSE exec -T sync-multi test -d "/data/vaults/test-vault-2" 2>/dev/null; then
+    if $COMPOSE exec -T sync-multi test -d "/data/vaults/obsidian_admin_smoketest2" 2>/dev/null; then
         SYNC2_OK=true
         break
     fi
@@ -303,9 +315,9 @@ done
 echo
 
 if $SYNC2_OK; then
-    pass "Multi-vault sync: discovered and bootstrapped test-vault-2"
+    pass "Multi-vault sync: discovered and bootstrapped obsidian_admin_smoketest2"
 else
-    fail "Multi-vault sync: test-vault-2 not discovered after 75s"
+    fail "Multi-vault sync: obsidian_admin_smoketest2 not discovered after 75s"
     echo "  --- sync-multi logs ---"
     $COMPOSE logs --tail=30 sync-multi 2>/dev/null || true
     echo "  ---"

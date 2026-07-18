@@ -30,12 +30,12 @@ services:
     command:
       - |
         URL="http://$$COUCHDB_USER:$$COUCHDB_PASSWORD@couchdb:5984"
-        for db in _users _replicator _global_changes $$COUCHDB_DATABASE livesync-registry livesync-passphrases; do
+        for db in _users _replicator _global_changes $$COUCHDB_DATABASE livesync-registry livesync-passphrases livesync-passwords; do
           echo "Creating $$db..."
           curl -sf -X PUT "$$URL/$$db" || true
         done
         echo "Locking down registry + passphrases databases (admin only)..."
-        for db in livesync-registry livesync-passphrases; do
+        for db in livesync-registry livesync-passphrases livesync-passwords; do
           curl -sf -X PUT "$$URL/$$db/_security" \
             -H "Content-Type: application/json" \
             -d '{"admins":{"names":[],"roles":["_admin"]},"members":{"names":[],"roles":["_admin"]}}'
