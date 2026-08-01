@@ -44,15 +44,22 @@ TARGETS=("${@:-${PUSHABLE[@]}}")
 
 log() { echo "==> $*"; }
 
-# ── ECR login ────────────────────────────────────────────────────────────────
+# ── ECR auth ─────────────────────────────────────────────────────────────────
 if ! aws sts get-caller-identity --profile "${AWS_PROFILE}" >/dev/null 2>&1; then
   echo "ERROR: no valid AWS session for profile '${AWS_PROFILE}'." >&2
   echo "Run: aws sso login --profile ${AWS_PROFILE}" >&2
   exit 1
 fi
-log "Logging in to ECR (${REGISTRY}) with profile ${AWS_PROFILE}"
-aws ecr get-login-password --region "${REGION}" --profile "${AWS_PROFILE}" \
-  | docker login --username AWS --password-stdin "${REGISTRY}"
+export AWS_PROFILE
+if grep -qs "\"${REGISTRY}\": \"ecr-login\"" ~/.docker/config.json; then
+  # amazon-ecr-credential-helper fetches tokens per push using AWS_PROFILE;
+  # `docker login` would fail against it (the helper can't *store* creds)
+  log "ECR auth via amazon-ecr-credential-helper (profile ${AWS_PROFILE})"
+else
+  log "Logging in to ECR (${REGISTRY}) with profile ${AWS_PROFILE}"
+  aws ecr get-login-password --region "${REGION}" \
+    | docker login --username AWS --password-stdin "${REGISTRY}"
+fi
 
 # ── Build livesync-cli base image (always needed) ───────────────────────────
 log "Building livesync-cli:local (base image)"
