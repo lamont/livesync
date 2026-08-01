@@ -41,7 +41,11 @@ cleanup() {
     echo "==> Tearing down..."
     $COMPOSE down --volumes --remove-orphans --timeout 5 2>/dev/null || true
 }
-trap cleanup EXIT
+# KEEP_UP=1 leaves the stack running for inspection; tear down manually with
+#   docker compose down --volumes --remove-orphans   (from this worktree)
+if [ "${KEEP_UP:-0}" != "1" ]; then
+    trap cleanup EXIT
+fi
 
 # ── Start the stack ──────────────────────────────────────────────────────────
 echo "==> Building and starting couchdb + portal + minio + publisher..."
@@ -235,3 +239,11 @@ echo "  Passed: $PASS"
 echo "  Failed: $FAIL"
 [ "$FAIL" -gt 0 ] && { echo "FAILED"; exit 1; }
 echo "ALL TESTS PASSED"
+
+if [ "${KEEP_UP:-0}" = "1" ]; then
+    echo
+    echo "Stack left running (KEEP_UP=1):"
+    echo "  Rendered wiki:  http://localhost:8000/vaults/$VAULT/  (admin@localhost / admin)"
+    echo "  MinIO console:  http://localhost:9001  (minioadmin / minioadmin)"
+    echo "  Tear down:      docker compose down --volumes --remove-orphans"
+fi
