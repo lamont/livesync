@@ -1,0 +1,9 @@
+[project]
+name = "livesync-publish"
+version = "0.1.0"
+description = "Mirror synced vaults to S3, honoring per-page publish: false frontmatter"
+requires-python = ">=3.12"
+dependencies = [
+    "boto3>=1.34",
+    "pyyaml>=6.0",
+]

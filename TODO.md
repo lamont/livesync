@@ -182,6 +182,43 @@
 - [ ] Add docker-compose profiles: default, legacy, agent
 - [ ] **Checkpoint**: `./scripts/test-e2e.sh` passes green
 
+## Phase 16: S3 Vault Persistence + Read-Only Publish Store
+
+Goal: every vault's publishable markdown lives in one S3 bucket that consumers
+(Quartz builds, agents, other services) can mount as a filesystem and refer to
+by plain path. CouchDB remains the source of truth; the bucket is a derived,
+read-only projection.
+
+### Local test chain (branch `s3-publish`)
+
+- [x] `publish/` service — Python + boto3 sidecar that mirrors
+      `/data/vaults/<name>/` (written by sync-multi) to `s3://vaults/<name>/`
+      each cycle: uploads changed files (md5 vs ETag), deletes objects that are
+      no longer publishable
+- [x] Per-page "do not publish" flag — markdown with `publish: false` in YAML
+      frontmatter is excluded from the bucket (and removed if published
+      earlier); everything still syncs to CouchDB/desktop as usual
+- [x] `minio` service — local S3-compatible store (console at :9001) so the
+      chain runs without AWS credentials; `S3_ENDPOINT_URL` unset = real AWS
+- [ ] **Checkpoint**: markdown pushed through the LiveSync endpoint (CouchDB)
+      appears in the bucket; a `publish: false` page does not
+
+### Production direction (not deployed)
+
+- [ ] Real S3 bucket per environment (e.g. `livesync-vaults-<env>`), publisher
+      Deployment with IRSA instead of MinIO creds
+- [ ] Mount the bucket on EKS via **Amazon S3 Files** — the managed NFS layer
+      over S3 that reuses the `aws-efs-csi-driver` (v3.0.0+): consumers get
+      POSIX paths (`/vaults/<name>/...`) backed by the bucket. Recipe already
+      in the wiki: `eks-s3-files-deployment` (two IRSA roles, `aws_s3files_*`
+      Terraform resources, dynamic-provisioning StorageClass via
+      `efs.csi.aws.com`)
+- [ ] Decide whether Quartz builds read from the S3 Files mount instead of the
+      EFS `vaults` PVC (would make published HTML honor `publish: false` for
+      free, since flagged pages never reach the mount)
+- [ ] Sweep for stale prefixes: publisher only prunes objects inside vaults it
+      still sees on disk — a deleted vault's prefix lingers until cleaned up
+
 ## Open Questions
 
 1. **livesync-cli maturity** — Experimental (March 2026). May need fallback to
