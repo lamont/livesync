@@ -28,8 +28,10 @@ declare -A CONTEXTS=(
   [agent]="agent"
   [publish]="publish"
 )
+# livesync-cli uses a patched copy of the vendored Dockerfile (npm ci against
+# the lockfile; upstream's npm install breaks on a phantom @smithy dep)
 declare -A DOCKERFILES=(
-  [livesync-cli]="vendor/obsidian-livesync/src/apps/cli/Dockerfile"
+  [livesync-cli]="livesync-cli.Dockerfile"
   [sync]="sync/Dockerfile"
   [portal]="portal/Dockerfile"
   [agent]="agent/Dockerfile"

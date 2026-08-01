@@ -82,7 +82,7 @@ fi
 # ── Start sync-multi and wait for bootstrap ──────────────────────────────────
 if [ "${REBUILD_CLI:-0}" = "1" ] || ! docker image inspect livesync-cli:local >/dev/null 2>&1; then
     echo "==> Building livesync-cli base image..."
-    docker build -f vendor/obsidian-livesync/src/apps/cli/Dockerfile \
+    docker build -f livesync-cli.Dockerfile \
         -t livesync-cli:local --load vendor/obsidian-livesync 2>&1 | tail -3
 fi
 echo "==> Starting sync-multi..."

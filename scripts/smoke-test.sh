@@ -248,7 +248,7 @@ fi
 if [ "${REBUILD_CLI:-0}" = "1" ] || ! docker image inspect livesync-cli:local >/dev/null 2>&1; then
     echo "==> Building livesync-cli base image..."
     docker buildx build --platform linux/$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/') \
-        -f vendor/obsidian-livesync/src/apps/cli/Dockerfile \
+        -f livesync-cli.Dockerfile \
         -t livesync-cli:local --load \
         vendor/obsidian-livesync 2>&1 | tail -3
 else
