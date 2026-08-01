@@ -3,17 +3,17 @@
 # ECR repo in eq-shared-services, tagged per component.
 #
 # Usage:
-#   ./build-push.sh              # build + push all
-#   ./build-push.sh sync viewer  # build + push specific images
+#   ./build-push.sh                # build + push all
+#   ./build-push.sh sync portal    # build + push specific images
 #
 # Prerequisites:
 #   - docker with buildx
-#   - granted/assume CLI (`assume eq-shared-services` must work)
+#   - aws sso login --profile eq-shared-services
 set -euo pipefail
 
 ACCOUNT_ID=497689819904
 REGION=us-east-1
-ASSUME_PROFILE="${ASSUME_PROFILE:-eq-shared-services}"
+AWS_PROFILE="${AWS_PROFILE:-eq-shared-services}"
 REPO=eqincubatingimages
 REGISTRY="${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com"
 IMAGE_BASE="${REGISTRY}/${REPO}"
@@ -26,16 +26,18 @@ declare -A CONTEXTS=(
   [sync]="sync"
   [portal]="portal"
   [agent]="agent"
+  [publish]="publish"
 )
 declare -A DOCKERFILES=(
   [livesync-cli]="vendor/obsidian-livesync/src/apps/cli/Dockerfile"
   [sync]="sync/Dockerfile"
   [portal]="portal/Dockerfile"
   [agent]="agent/Dockerfile"
+  [publish]="publish/Dockerfile"
 )
 
 # livesync-cli is a build dependency, not pushed separately by default
-PUSHABLE=(sync portal agent)
+PUSHABLE=(sync portal agent publish)
 
 # If args given, only build+push those (but always build livesync-cli first)
 TARGETS=("${@:-${PUSHABLE[@]}}")
@@ -43,9 +45,14 @@ TARGETS=("${@:-${PUSHABLE[@]}}")
 log() { echo "==> $*"; }
 
 # ── ECR login ────────────────────────────────────────────────────────────────
-#log "Logging in to ECR (${REGISTRY}) via assume ${ASSUME_PROFILE}"
-#assume "${ASSUME_PROFILE}" --exec "aws ecr get-login-password --region ${REGION}" \
-#  | docker login --username AWS --password-stdin "${REGISTRY}"
+if ! aws sts get-caller-identity --profile "${AWS_PROFILE}" >/dev/null 2>&1; then
+  echo "ERROR: no valid AWS session for profile '${AWS_PROFILE}'." >&2
+  echo "Run: aws sso login --profile ${AWS_PROFILE}" >&2
+  exit 1
+fi
+log "Logging in to ECR (${REGISTRY}) with profile ${AWS_PROFILE}"
+aws ecr get-login-password --region "${REGION}" --profile "${AWS_PROFILE}" \
+  | docker login --username AWS --password-stdin "${REGISTRY}"
 
 # ── Build livesync-cli base image (always needed) ───────────────────────────
 log "Building livesync-cli:local (base image)"
